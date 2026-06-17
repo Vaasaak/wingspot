@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e2a4a"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- křídlo (wing) -->
+  <path d="M120 300 C 180 120, 360 110, 410 150 C 360 190, 250 230, 150 320 Z"
+        fill="#ffffff" opacity="0.96"/>
+  <path d="M150 320 C 250 230, 360 190, 410 150 L 250 300 Z"
+        fill="#bdf3ff" opacity="0.9"/>
+  <!-- vlna -->
+  <path d="M70 380 q 50 -34 100 0 t 100 0 t 100 0 t 100 0"
+        fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" opacity="0.85"/>
+  <path d="M70 424 q 50 -34 100 0 t 100 0 t 100 0 t 100 0"
+        fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" opacity="0.5"/>
+</svg>

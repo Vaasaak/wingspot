@@ -1,0 +1,586 @@
+.app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 14px 40px;
+}
+
+/* ---------- TOPBAR ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 4px;
+  margin-bottom: 8px;
+  background: linear-gradient(var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand .logo {
+  font-size: 2rem;
+}
+.brand h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.5px;
+}
+.brand-sub {
+  font-size: 0.8rem;
+}
+.icon-btn {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:hover {
+  background: var(--card-2);
+}
+
+.status {
+  padding: 14px;
+  background: var(--card);
+  border-radius: 12px;
+  margin: 8px 0;
+}
+.status.error {
+  border: 1px solid #f87171;
+  color: #fecaca;
+}
+
+.btn {
+  background: var(--accent);
+  color: #04121d;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.btn:disabled {
+  opacity: 0.6;
+}
+.btn.small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+/* ---------- NEXT SESSION ---------- */
+.next-session {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: linear-gradient(135deg, var(--card-2), var(--card));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  margin: 6px 0 16px;
+  color: var(--text);
+}
+.next-session.great {
+  border-color: var(--great);
+  box-shadow: 0 0 0 1px var(--great), 0 8px 30px -12px var(--great);
+}
+.next-session.none {
+  cursor: default;
+}
+.ns-icon {
+  font-size: 2rem;
+}
+.ns-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ns-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.ns-sub {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.ns-arrow {
+  margin-left: auto;
+  font-size: 1.6rem;
+  color: var(--muted);
+}
+
+/* ---------- CALENDAR (tabulka po týdnech) ---------- */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.cal-head {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 2px 6px;
+  min-height: 62px;
+  color: var(--text);
+  background: var(--card);
+  cursor: pointer;
+  transition: filter 0.12s;
+  /* vlání ve větru – výkyv (--amp) a rychlost (--dur) nastavuje appka podle větru */
+  --amp: 1deg;
+  --dur: 2s;
+  transform-origin: 50% 30%;
+  animation: flutter var(--dur) ease-in-out infinite;
+  will-change: transform;
+}
+.cal-cell:hover {
+  filter: brightness(1.18);
+}
+@keyframes flutter {
+  0% {
+    transform: rotate(calc(-1 * var(--amp))) skewX(calc(0.5 * var(--amp)));
+  }
+  20% {
+    transform: rotate(calc(0.6 * var(--amp))) skewX(calc(-0.3 * var(--amp)));
+  }
+  40% {
+    transform: rotate(calc(-0.4 * var(--amp))) skewX(calc(0.4 * var(--amp)));
+  }
+  60% {
+    transform: rotate(calc(0.7 * var(--amp))) skewX(calc(-0.2 * var(--amp)));
+  }
+  80% {
+    transform: rotate(calc(-0.3 * var(--amp))) skewX(calc(0.3 * var(--amp)));
+  }
+  100% {
+    transform: rotate(calc(-1 * var(--amp))) skewX(calc(0.5 * var(--amp)));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cal-cell {
+    animation: none;
+  }
+}
+.cal-cell.rating-great {
+  background: color-mix(in srgb, var(--great) 28%, var(--card));
+}
+.cal-cell.rating-good {
+  background: color-mix(in srgb, var(--good) 24%, var(--card));
+}
+.cal-cell.rating-potential {
+  background: color-mix(in srgb, var(--potential) 20%, var(--card));
+}
+.cal-cell.selected {
+  outline: 2px solid var(--accent);
+}
+.cal-cell.today .cc-date {
+  color: var(--accent);
+  font-weight: 800;
+}
+.cal-cell.outlook {
+  border-style: dashed;
+  opacity: 0.78;
+}
+.cc-date {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.cc-emoji {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.cc-wind {
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* ---------- DAY DETAIL ---------- */
+.day-detail-head {
+  margin: 14px 2px 10px;
+}
+.day-detail-head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  text-transform: capitalize;
+}
+.day-detail-sub {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+  margin-top: 4px;
+}
+.good-count {
+  color: var(--good);
+}
+
+.spot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.empty {
+  padding: 24px;
+  text-align: center;
+}
+
+/* ---------- SPOT ROW ---------- */
+.spot-row {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--none);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.spot-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+}
+.fav-btn {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  color: var(--muted);
+  padding: 0;
+  line-height: 1;
+}
+.fav-btn.on {
+  color: #fbbf24;
+}
+.spot-info {
+  flex: 1;
+  min-width: 0;
+}
+.spot-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spot-name {
+  font-weight: 700;
+  font-size: 1.02rem;
+}
+.spot-dist {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.spot-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  font-size: 0.85rem;
+}
+.rating-chip {
+  color: #04121d;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.wind-arrow {
+  color: var(--accent);
+}
+.spot-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.confidence {
+  display: flex;
+  gap: 3px;
+}
+.conf-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.conf-dot.on {
+  background: var(--accent);
+}
+.upside {
+  font-size: 0.72rem;
+  color: var(--potential);
+  font-weight: 600;
+}
+.expand {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.spot-detail {
+  padding: 0 12px 14px;
+  border-top: 1px solid var(--line);
+}
+.spot-note p {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+}
+.windguru-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+}
+.windguru-link:hover {
+  background: var(--card-2);
+}
+
+/* ---------- HOURLY CHART ---------- */
+.hchart {
+  margin-top: 12px;
+}
+.hchart-vals,
+.hchart-hours {
+  display: flex;
+  gap: 3px;
+}
+.hcolval {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
+  min-width: 0;
+}
+.hgustval {
+  font-size: 0.54rem;
+  color: var(--muted);
+  opacity: 0.75;
+}
+.hwindval {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.hchart-bars {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 96px;
+  margin: 3px 0;
+}
+.hcol {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.hgust {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--line);
+  border-radius: 3px 3px 0 0;
+  opacity: 0.5;
+}
+.hbar {
+  position: relative;
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  opacity: 0.5;
+  z-index: 1;
+}
+.hbar.ride {
+  opacity: 1;
+  box-shadow: 0 0 7px -1px currentColor;
+}
+.hchart-threshold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed var(--text);
+  opacity: 0.45;
+  z-index: 2;
+}
+.hhour {
+  flex: 1;
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+/* ---------- MODAL / SETTINGS ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 10, 20, 0.7);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.modal-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.modal-body {
+  padding: 8px 18px 28px;
+}
+.modal-body section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.field-label {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 8px;
+}
+.home-current {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.chip {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+.chip.active {
+  background: var(--accent);
+  color: #04121d;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.search-results {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.search-result {
+  background: var(--card);
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  text-align: left;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+.search-result:hover {
+  background: var(--card-2);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.switch-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.switch-row input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.switch-row .hint {
+  display: block;
+  margin-top: 3px;
+}
+.refresh-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.outlook-tag {
+  font-size: 0.68rem;
+  color: var(--potential);
+  border: 1px solid var(--potential);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.cal-day.outlook {
+  opacity: 0.7;
+  border-top-style: dashed;
+}
+
+.footer {
+  margin-top: 28px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .brand h1 {
+    font-size: 1.3rem;
+  }
+  .ns-title {
+    font-size: 1.05rem;
+  }
+}
