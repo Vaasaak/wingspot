@@ -60,7 +60,12 @@ export function HourlyChart({
       <div className="hchart-hours">
         {hours.map((h) => (
           <div className="hhour" key={h.time}>
-            {h.hour}
+            {h.precip > 0.1 && (
+              <span className="rain" title={`déšť ${h.precip.toFixed(1)} mm`}>
+                💧
+              </span>
+            )}
+            <span>{h.hour}</span>
           </div>
         ))}
       </div>

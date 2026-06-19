@@ -11,6 +11,13 @@
 //  GPS najdeš na mapy.cz (pravý klik → „Co je tady?").
 // =============================================================
 
+// Rozsah směrů větru ve stupních (0–360), ODKUD vítr vane (0=S, 90=V, 180=J, 270=Z).
+// Rozsah může „přejít přes nulu", např. { from: 340, to: 30 } = od SZ přes S po SV.
+export interface DirRange {
+  from: number;
+  to: number;
+}
+
 export interface Spot {
   id: string;
   name: string;
@@ -19,6 +26,12 @@ export interface Spot {
   lon: number;
   note?: string;
   windguru?: string; // odkaz na Windguru pro křížovou kontrolu
+  // Z jakých směrů na spotu pěkně fouká (onshore/cross-on). Když prázdné,
+  // appka jede jen podle síly a označí „směr neověřen".
+  goodDirs?: DirRange[];
+  // Nebezpečné směry (offshore = fouká od břehu na vodu). Hodina s takovým
+  // směrem NIKDY není jezditelná, i kdyby foukalo skvěle.
+  badDirs?: DirRange[];
 }
 
 export const SPOTS: Spot[] = [

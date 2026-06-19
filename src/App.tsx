@@ -10,15 +10,15 @@ import {
 import type { Settings } from "./lib/settings";
 import { fetchForecasts } from "./lib/weather";
 import type { SpotForecast } from "./lib/weather";
-import { evaluateSpot, RATING_ORDER } from "./lib/scoring";
+import { evaluateSpot, distancePenalty } from "./lib/scoring";
 import type { Rating } from "./lib/scoring";
 import { distanceKm } from "./lib/geo";
 import { Calendar } from "./components/Calendar";
 import type { CalendarDay } from "./components/Calendar";
 import { DayDetail } from "./components/DayDetail";
 import type { SpotDay } from "./components/DayDetail";
-import { NextSession } from "./components/NextSession";
-import type { NextSessionInfo } from "./components/NextSession";
+import { WhereToGo } from "./components/WhereToGo";
+import type { WhereOption } from "./components/WhereToGo";
 import { SettingsPanel } from "./components/SettingsPanel";
 
 export default function App() {
@@ -75,7 +75,7 @@ export default function App() {
       .map(({ spot, dist }) => {
         const fc = fcById.get(spot.id);
         if (!fc) return null;
-        return { spot, dist, evalResult: evaluateSpot(fc, settings) };
+        return { spot, dist, evalResult: evaluateSpot(spot, fc, settings) };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
@@ -93,10 +93,17 @@ export default function App() {
           return day ? { spot, day, distanceKm: dist } : null;
         })
         .filter((x): x is SpotDay => x !== null)
+        // finální pořadí = kvalita (0–1) × vzdálenostní penalizace:
+        // bližší spot při srovnatelné kvalitě vyhraje, ale vzdálenost nikdy
+        // neudělá z dobrého spotu špatný (jen rozhoduje mezi srovnatelnými).
         .sort((a, b) => {
-          const r = RATING_ORDER[b.day.rating] - RATING_ORDER[a.day.rating];
-          if (r !== 0) return r;
-          return b.day.score - a.day.score;
+          const fa =
+            a.day.qualityScore *
+            distancePenalty(a.distanceKm, settings.maxDistanceKm);
+          const fb =
+            b.day.qualityScore *
+            distancePenalty(b.distanceKm, settings.maxDistanceKm);
+          return fb - fa;
         });
 
       spotDaysByDate[date] = spotDays;
@@ -121,27 +128,40 @@ export default function App() {
       });
     }
 
-    // nejbližší jízda
-    let nextSession: NextSessionInfo | null = null;
+    // KAM VYRAZIT: nejlepší den každého spotu (jen jezditelné), seřazené
+    // podle final skóre (kvalita × vzdálenost), TOP 3 různé spoty.
+    const bestPerSpot = new Map<string, WhereOption>();
     for (const date of dates) {
-      const top = spotDaysByDate[date].find(
-        (sd) => sd.day.rating === "good" || sd.day.rating === "great"
-      );
-      if (top) {
-        nextSession = {
-          date,
-          spotName: top.spot.name,
-          distanceKm: top.distanceKm,
-          windowStart: top.day.windowStart,
-          windowEnd: top.day.windowEnd,
-          avgMs: top.day.windowAvgMs,
-          great: top.day.rating === "great",
-        };
-        break;
+      for (const sd of spotDaysByDate[date]) {
+        if (sd.day.rating !== "good" && sd.day.rating !== "great") continue;
+        const final =
+          sd.day.qualityScore *
+          distancePenalty(sd.distanceKm, settings.maxDistanceKm);
+        const prev = bestPerSpot.get(sd.spot.id);
+        if (!prev || final > prev.final) {
+          bestPerSpot.set(sd.spot.id, {
+            final,
+            date,
+            spotId: sd.spot.id,
+            spotName: sd.spot.name,
+            region: sd.spot.region,
+            lat: sd.spot.lat,
+            lon: sd.spot.lon,
+            windowStart: sd.day.windowStart,
+            windowEnd: sd.day.windowEnd,
+            avgMs: sd.day.windowAvgMs,
+            distanceKm: sd.distanceKm,
+            rating: sd.day.rating,
+            confidence: sd.day.confidence,
+          });
+        }
       }
     }
+    const topOptions = [...bestPerSpot.values()]
+      .sort((a, b) => b.final - a.final)
+      .slice(0, 3);
 
-    return { dates, spotDaysByDate, calendar, nextSession };
+    return { dates, spotDaysByDate, calendar, topOptions };
   }, [forecasts, settings]);
 
   // vyber výchozí den
@@ -189,14 +209,14 @@ export default function App() {
 
       {derived && (
         <>
-          <NextSession
-            info={derived.nextSession}
-            onClick={() => {
-              if (derived.nextSession)
-                setSelectedDate(derived.nextSession.date);
-            }}
+          <WhereToGo
+            options={derived.topOptions}
+            homeLat={settings.homeLat}
+            homeLon={settings.homeLon}
+            onSelectDay={setSelectedDate}
           />
 
+          <h3 className="section-label">📅 Předpověď po dnech</h3>
           <Calendar
             days={derived.calendar}
             selected={selectedDate}

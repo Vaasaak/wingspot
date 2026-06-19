@@ -1,19 +1,12 @@
 // Stahování předpovědi z Open-Meteo (zdarma, bez registrace).
 //
-// PŘEDPOVĚĎ = VÁŽENÝ PRŮMĚR VÍCE MODELŮ (jako dělá Windguru).
-// Pro každou hodinu vezmeme všechny modely, které tam mají data, a uděláme
-// jejich vážený průměr – modely s vyšším rozlišením (přesnější) mají větší váhu.
-// Tím se "samo" stane, že:
-//   - prvních ~3 dny vedou modely 1–2 km (AROME, ICON-D2, HARMONIE),
-//   - dál ICON-EU, pak ECMWF a GFS (na delší horizont).
-//   - dny 17–22: "výhled" z ansámblu GEFS (jen orientačně).
+// PŘEDPOVĚĎ = VÁŽENÝ PRŮMĚR VÍCE MODELŮ (jako dělá Windguru). Modely s vyšším
+// rozlišením (přesnější) mají větší váhu. Prvních ~3 dny vedou jemné modely
+// (AROME, ICON-D2, HARMONIE), dál ICON-EU, ECMWF a GFS; dny 17–22 jsou „výhled"
+// z ansámblu GEFS. Bereme: vítr, nárazy, SMĚR větru a SRÁŽKY.
 //
-// Pozn.: ALADIN (ČHMÚ, pro Česko nejpřesnější) by se sem hodil, ale Open-Meteo
-//   ho nemá a ČHMÚ ho dává jen jako GRIB soubory bez CORS → z prohlížeče
-//   nedostupné. Šlo by doplnit přes malý server/scheduled job (viz poznámky).
-//
+// Pozn.: ALADIN (ČHMÚ) Open-Meteo nemá; jeho data jsou jen GRIB bez CORS.
 // SPOLEHLIVOST/POTENCIÁL: z rozptylu 31 variant ansámblu GEFS.
-// O jezditelnosti rozhoduje VÍTR (ne nárazy). Náraz nikdy není menší než vítr.
 
 import { SPOTS } from "../data/spots";
 
@@ -22,6 +15,8 @@ export interface SpotForecast {
   times: string[];
   windMs: number[];
   gustMs: number[];
+  windDir: (number | null)[]; // stupně 0–360, odkud vítr vane (null = neznámý/výhled)
+  precip: number[]; // srážky mm/h
   ensP25: (number | null)[];
   ensP75: (number | null)[];
   isOutlook: boolean[];
@@ -67,7 +62,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, Math.min(sorted.length - 1, idx))];
 }
 
-const CACHE_KEY = "wingspot-forecast-cache-v5";
+const CACHE_KEY = "wingspot-forecast-cache-v6";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function fetchForecasts(
@@ -89,7 +84,7 @@ export async function fetchForecasts(
 
   const loc = locParams();
   const detUrl =
-    `${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m` +
+    `${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation` +
     `&daily=sunrise,sunset&models=${MODELS.map((m) => m.name).join(",")}` +
     `&forecast_days=${DET_DAYS}${loc}`;
   const ensUrl =
@@ -111,17 +106,21 @@ export async function fetchForecasts(
     );
     const memberArrays: number[][] = memberKeys.map((k) => ensH[k] ?? []);
 
-    // přesné modely – pole větru a nárazů pro každý model
+    // přesné modely – pole pro každý model
     const detLoc = det[i] ?? {};
     const detH = detLoc.hourly ?? {};
     const detTimes: string[] = detH.time ?? [];
-    const modelWind = MODELS.map((m) => detH[`wind_speed_10m_${m.name}`] ?? []);
-    const modelGust = MODELS.map((m) => detH[`wind_gusts_10m_${m.name}`] ?? []);
+    const mWind = MODELS.map((m) => detH[`wind_speed_10m_${m.name}`] ?? []);
+    const mGust = MODELS.map((m) => detH[`wind_gusts_10m_${m.name}`] ?? []);
+    const mDir = MODELS.map((m) => detH[`wind_direction_10m_${m.name}`] ?? []);
+    const mPrecip = MODELS.map((m) => detH[`precipitation_${m.name}`] ?? []);
     const detIdx: Record<string, number> = {};
     detTimes.forEach((t, idx) => (detIdx[t] = idx));
 
     const windMs: number[] = [];
     const gustMs: number[] = [];
+    const windDir: (number | null)[] = [];
+    const precip: number[] = [];
     const ensP25: (number | null)[] = [];
     const ensP75: (number | null)[] = [];
     const isOutlook: boolean[] = [];
@@ -141,6 +140,8 @@ export async function fetchForecasts(
       const di = detIdx[times[h]];
       let wind: number | null = null;
       let gust = 0;
+      let dir: number | null = null;
+      let precipVal = 0;
       let outlook = true;
 
       if (di !== undefined) {
@@ -148,35 +149,59 @@ export async function fetchForecasts(
         let wWt = 0;
         let gSum = 0;
         let gWt = 0;
+        let dx = 0;
+        let dy = 0;
+        let dWt = 0;
+        let pSum = 0;
+        let pWt = 0;
         for (let k = 0; k < MODELS.length; k++) {
           const wt = MODELS[k].weight;
-          const v = modelWind[k][di];
+          const v = mWind[k][di];
           if (typeof v === "number") {
             wSum += v * wt;
             wWt += wt;
           }
-          const gv = modelGust[k][di];
+          const gv = mGust[k][di];
           if (typeof gv === "number") {
             gSum += gv * wt;
             gWt += wt;
+          }
+          const dv = mDir[k][di];
+          if (typeof dv === "number") {
+            // kruhový (vektorový) průměr směrů
+            dx += Math.cos((dv * Math.PI) / 180) * wt;
+            dy += Math.sin((dv * Math.PI) / 180) * wt;
+            dWt += wt;
+          }
+          const pv = mPrecip[k][di];
+          if (typeof pv === "number") {
+            pSum += pv * wt;
+            pWt += wt;
           }
         }
         if (wWt > 0) {
           wind = wSum / wWt;
           gust = Math.max(gWt > 0 ? gSum / gWt : 0, wind);
+          if (dWt > 0)
+            dir = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+          precipVal = pWt > 0 ? pSum / pWt : 0;
           outlook = false;
         }
       }
 
-      // výhled z ansámblu (nejdál)
+      // výhled z ansámblu (nejdál) – směr ani srážky tam nejsou
       if (wind === null) {
         wind = mean ?? 0;
         gust = wind;
+        dir = null;
+        precipVal = 0;
         outlook = true;
       }
 
       windMs.push(wind);
       gustMs.push(gust);
+      windDir.push(dir);
+      precip.push(precipVal);
       isOutlook.push(outlook);
     }
 
@@ -187,7 +212,18 @@ export async function fetchForecasts(
       sunset: dDaily.sunset?.[di] ?? "",
     }));
 
-    return { spotId: spot.id, times, windMs, gustMs, ensP25, ensP75, isOutlook, daily };
+    return {
+      spotId: spot.id,
+      times,
+      windMs,
+      gustMs,
+      windDir,
+      precip,
+      ensP25,
+      ensP75,
+      isOutlook,
+      daily,
+    };
   });
 
   const fetchedAt = Date.now();

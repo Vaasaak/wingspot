@@ -17,6 +17,25 @@ export function distanceKm(
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+// Odkaz na navigaci autem z domovského místa na spot.
+export function googleMapsNavUrl(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number
+): string {
+  return (
+    "https://www.google.com/maps/dir/?api=1" +
+    `&origin=${fromLat},${fromLon}&destination=${toLat},${toLon}` +
+    "&travelmode=driving"
+  );
+}
+
+// Odkaz na bod ve Mapy.cz.
+export function mapyCzUrl(lat: number, lon: number): string {
+  return `https://mapy.cz/zakladni?source=coor&id=${lon},${lat}&x=${lon}&y=${lat}&z=14`;
+}
+
 // Vyhledání místa podle názvu (zdarma, přes Open-Meteo geocoding).
 export interface GeoResult {
   name: string;

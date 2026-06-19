@@ -77,47 +77,108 @@
   font-size: 0.85rem;
 }
 
-/* ---------- NEXT SESSION ---------- */
-.next-session {
+/* ---------- KAM VYRAZIT (discovery, první obrazovka) ---------- */
+.wtg {
+  margin: 6px 0 14px;
+}
+.wtg-head {
+  margin: 0 0 10px;
+  font-size: 1.3rem;
+}
+.wtg-empty {
   display: flex;
   align-items: center;
   gap: 14px;
-  width: 100%;
-  text-align: left;
   background: linear-gradient(135deg, var(--card-2), var(--card));
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 16px;
-  margin: 6px 0 16px;
-  color: var(--text);
-}
-.next-session.great {
-  border-color: var(--great);
-  box-shadow: 0 0 0 1px var(--great), 0 8px 30px -12px var(--great);
-}
-.next-session.none {
-  cursor: default;
 }
 .ns-icon {
   font-size: 2rem;
 }
-.ns-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
 .ns-title {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 700;
 }
-.ns-sub {
-  font-size: 0.9rem;
-  color: var(--muted);
+.wtg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.ns-arrow {
-  margin-left: auto;
-  font-size: 1.6rem;
+.wtg-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: linear-gradient(135deg, var(--card-2), var(--card));
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--good);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.wtg-card:hover {
+  transform: translateY(-2px);
+}
+.wtg-card.great {
+  box-shadow: 0 0 0 1px var(--great), 0 8px 24px -14px var(--great);
+}
+.wtg-rank {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.wtg-body {
+  flex: 1;
+  min-width: 0;
+}
+.wtg-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.wtg-sub {
+  font-size: 0.88rem;
   color: var(--muted);
+  margin-top: 1px;
+}
+.wtg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.wtg-nav {
+  flex: 0 0 auto;
+  background: var(--accent);
+  color: #04121d;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-decoration: none;
+  padding: 9px 12px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.wtg-nav:hover {
+  filter: brightness(1.08);
+}
+.section-label {
+  margin: 16px 0 6px;
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 /* ---------- CALENDAR (tabulka po týdnech) ---------- */
@@ -435,9 +496,15 @@
 }
 .hhour {
   flex: 1;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
   font-size: 0.62rem;
   color: var(--muted);
+}
+.hhour .rain {
+  font-size: 0.6rem;
 }
 
 /* ---------- MODAL / SETTINGS ---------- */
@@ -564,6 +631,19 @@
   border-radius: 999px;
   padding: 1px 7px;
   white-space: nowrap;
+}
+.warn-tag {
+  font-size: 0.68rem;
+  color: #fecaca;
+  background: #b91c1c;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.warn-text {
+  margin: 6px 0 0;
+  color: #fca5a5;
 }
 .cal-day.outlook {
   opacity: 0.7;

@@ -43,6 +43,14 @@ export function SpotRow({
             <span className="spot-dist">{distanceKm} km</span>
             {spot.region === "DE" && <span className="flag" title="Německo">🇩🇪</span>}
             {day.outlook && <span className="outlook-tag">výhled</span>}
+            {day.offshoreBlocked && (
+              <span
+                className="warn-tag"
+                title="Vítr by foukal dost, ale vane od břehu na vodu (offshore) – nebezpečné, odnese tě to od břehu."
+              >
+                ⚠ offshore
+              </span>
+            )}
           </div>
           <div className="spot-stats">
             <span className="rating-chip" style={{ background: meta.color }}>
@@ -91,9 +99,22 @@ export function SpotRow({
             <p className="muted small">
               Nárazy až {day.maxGustMs.toFixed(1)} m/s · spolehlivost{" "}
               {confidenceLabel(day.confidence)}
+              {day.precipMm > 0.1 && ` · 🌧 déšť ~${day.precipMm.toFixed(1)} mm`}
               {day.outlook && " · jen orientační výhled"}
               {day.upside && " · může se ještě zlepšit"}
             </p>
+            {day.offshoreBlocked && (
+              <p className="warn-text small">
+                ⚠ Pozor: vítr by foukal dost, ale vane od břehu na vodu
+                (offshore) – odneslo by tě to od břehu, nedoporučuje se.
+              </p>
+            )}
+            {day.dirUnverified && (
+              <p className="muted small">
+                ℹ️ Směr větru na tomto spotu není ověřený – hodnotí se zatím jen
+                podle síly.
+              </p>
+            )}
             {spot.windguru && (
               <a
                 className="windguru-link"

@@ -1,18 +1,39 @@
 // "Mozek" appky: z předpovědi spočítá, jak dobrý je který den na spotu.
-// Bere v potaz: sílu větru (m/s), JAK DLOUHO fouká (jezditelné okno)
-// a shodu ansámblu (spolehlivost / potenciál na zlepšení).
+// Bere v potaz: sílu větru (m/s), JAK DLOUHO fouká, SMĚR větru (bezpečnost),
+// srážky, poryvovost a shodu ansámblu (spolehlivost). Výstupem je rating
+// (barva) + qualityScore 0–1, do kterého pak App přidá vzdálenost.
 
+import type { Spot, DirRange } from "../data/spots";
 import type { Settings } from "./settings";
 import type { SpotForecast } from "./weather";
 
 export type Rating = "great" | "good" | "potential" | "none";
+
+// ---- laditelné konstanty rankingu (na jednom místě) ----
+export const RANK = {
+  idealHours: 6, // okno ≥ 6 h = plný bod za délku
+  idealWindOver: 6, // průměr o 6 m/s nad prahem = plný bod za sílu
+  wLength: 0.5,
+  wStrength: 0.3,
+  wConfidence: 0.2,
+  gustyRatio: 1.5, // nárazy/vítr nad tímto = poryvové, penalizace
+  gustyPenalty: 0.2, // max odečet ze skóre za poryvovost
+  precipPerMm: 0.05, // odečet za každý mm srážek v okně
+  precipMax: 0.25, // strop penalizace za srážky
+  distNearMul: 1.0, // násobič skóre na blízku
+  distFarMul: 0.6, // násobič na hraně maxDistanceKm
+};
 
 export interface HourEval {
   time: string;
   hour: number;
   windMs: number;
   gustMs: number;
+  dirDeg: number | null;
+  precip: number;
   rideable: boolean;
+  dirOk: boolean; // směr je v pořádku (ne offshore a v goodDirs / neověřeno)
+  offshore: boolean; // směr od břehu (nebezpečné)
   outlook: boolean;
   ensP25: number | null;
   ensP75: number | null;
@@ -27,10 +48,13 @@ export interface DayEval {
   windowAvgMs: number;
   maxWindMs: number;
   maxGustMs: number;
-  score: number;
-  confidence: number; // 0..1 shoda ansámblu
-  upside: boolean; // potenciál, že se předpověď zlepší
-  outlook: boolean; // den z výhledu (žádný přesný model)
+  qualityScore: number; // 0–1
+  confidence: number;
+  upside: boolean;
+  outlook: boolean;
+  offshoreBlocked: boolean; // foukalo by dost, ale směr od břehu
+  dirUnverified: boolean; // spot nemá vyplněnou orientaci
+  precipMm: number; // srážky v jezditelném okně
   hours: HourEval[];
   sunrise: string;
   sunset: string;
@@ -41,11 +65,26 @@ export interface SpotEval {
   days: DayEval[];
 }
 
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+function inDirRange(d: number, r: DirRange): boolean {
+  return r.from <= r.to ? d >= r.from && d <= r.to : d >= r.from || d <= r.to;
+}
+function inAnyDir(d: number, rs?: DirRange[]): boolean {
+  return !!rs && rs.length > 0 && rs.some((r) => inDirRange(d, r));
+}
+
 function parseHour(time: string): number {
   return parseInt(time.slice(11, 13), 10);
 }
 
-// Najde nejlepší "jezditelné okno" – souvislý úsek, kde toleruje max 1h výpadek.
+// vzdálenostní penalizace: 1.0 na blízku → distFarMul na hraně dosahu
+export function distancePenalty(distKm: number, maxKm: number): number {
+  const t = clamp01(distKm / Math.max(1, maxKm));
+  return RANK.distNearMul + (RANK.distFarMul - RANK.distNearMul) * t;
+}
+
+// nejlepší souvislé jezditelné okno (toleruje 1h výpadek)
 function bestWindow(hours: HourEval[]): {
   count: number;
   start: number | null;
@@ -75,7 +114,7 @@ function bestWindow(hours: HourEval[]): {
         lastRideable = j;
         j++;
       } else if (j + 1 < hours.length && hours[j + 1].rideable) {
-        j++; // jednohodinový výpadek tolerujeme
+        j++;
       } else {
         break;
       }
@@ -89,7 +128,13 @@ function bestWindow(hours: HourEval[]): {
   return best;
 }
 
-export function evaluateSpot(fc: SpotForecast, s: Settings): SpotEval {
+export function evaluateSpot(
+  spot: Spot,
+  fc: SpotForecast,
+  s: Settings
+): SpotEval {
+  const dirUnverified = !(spot.goodDirs && spot.goodDirs.length > 0);
+
   // seskup hodiny podle data (jen v denním okně)
   const byDate: Record<string, HourEval[]> = {};
   for (let i = 0; i < fc.times.length; i++) {
@@ -98,12 +143,27 @@ export function evaluateSpot(fc: SpotForecast, s: Settings): SpotEval {
     if (hour < s.dayStartHour || hour >= s.dayEndHour) continue;
     const date = time.slice(0, 10);
     const windMs = fc.windMs[i] ?? 0;
+    const dirDeg = fc.windDir[i] ?? null;
+    const dirKnown = dirDeg !== null;
+    const offshore = dirKnown && inAnyDir(dirDeg, spot.badDirs);
+    // směr je OK, když: spot nemá goodDirs, nebo směr neznáme (výhled),
+    // nebo směr padá do goodDirs. Offshore vždy blokuje.
+    const goodDirOk =
+      !spot.goodDirs || spot.goodDirs.length === 0 || !dirKnown
+        ? true
+        : inAnyDir(dirDeg, spot.goodDirs);
+    const dirOk = !offshore && goodDirOk;
+    const rideable = windMs >= s.minWindMs && dirOk;
     (byDate[date] = byDate[date] ?? []).push({
       time,
       hour,
       windMs,
       gustMs: fc.gustMs[i] ?? 0,
-      rideable: windMs >= s.minWindMs,
+      dirDeg,
+      precip: fc.precip[i] ?? 0,
+      rideable,
+      dirOk,
+      offshore,
       outlook: fc.isOutlook[i] ?? false,
       ensP25: fc.ensP25[i] ?? null,
       ensP75: fc.ensP75[i] ?? null,
@@ -121,27 +181,29 @@ export function evaluateSpot(fc: SpotForecast, s: Settings): SpotEval {
       const maxWindMs = Math.max(0, ...hours.map((h) => h.windMs));
       const maxGustMs = Math.max(0, ...hours.map((h) => h.gustMs));
       const outlook = hours.every((h) => h.outlook);
+      // foukalo by dost, ale směr od břehu (varování)
+      const offshoreBlocked = hours.some(
+        (h) => h.windMs >= s.minWindMs && h.offshore
+      );
 
-      // SPOLEHLIVOST z rozptylu ansámblu:
-      // hodina je "jistá", když i pesimistická čtvrtina fouká (jistě vítr),
-      // nebo když ani optimistická čtvrtina nefouká (jistě klid).
-      // Když práh leží uvnitř rozptylu → nejistota.
+      // spolehlivost z rozptylu ansámblu
       let certain = 0;
       let withEns = 0;
       let upsideHours = 0;
       for (const h of hours) {
         if (h.ensP25 === null || h.ensP75 === null) continue;
         withEns++;
-        const surelyWindy = h.ensP25 >= s.minWindMs;
-        const surelyCalm = h.ensP75 < s.minWindMs;
-        if (surelyWindy || surelyCalm) certain++;
-        // potenciál: teď to nejede, ale optimistická čtvrtina ukazuje vítr
+        if (h.ensP25 >= s.minWindMs || h.ensP75 < s.minWindMs) certain++;
         if (h.windMs < s.minWindMs && h.ensP75 >= s.minWindMs) upsideHours++;
       }
       const confidence = withEns > 0 ? certain / withEns : 0.5;
       const upside = upsideHours >= Math.max(2, s.minSessionHours - 1);
 
-      // HODNOCENÍ
+      const nearMissHours = hours.filter(
+        (h) => h.windMs >= s.minWindMs - 0.5 && h.dirOk
+      ).length;
+
+      // hodnocení (barva)
       let rating: Rating;
       if (
         !outlook &&
@@ -151,18 +213,42 @@ export function evaluateSpot(fc: SpotForecast, s: Settings): SpotEval {
         rating = "great";
       } else if (!outlook && win.count >= s.minSessionHours) {
         rating = "good";
-      } else if (maxWindMs >= s.minWindMs - 0.5) {
-        // "potenciál" = vítr se aspoň přiblíží prahu (vrchol ≥ práh−0,5 m/s)
+      } else if (win.count >= 1 || nearMissHours >= s.minSessionHours) {
         rating = "potential";
       } else {
         rating = "none";
       }
 
-      const score =
-        win.count * Math.max(win.avg, s.minWindMs) +
-        maxGustMs * 0.2 +
-        confidence * 2 -
-        (outlook ? 1 : 0);
+      // --- qualityScore 0–1 ---
+      const winHours = hours.filter(
+        (h) =>
+          win.start !== null &&
+          h.hour >= win.start &&
+          h.hour < (win.end ?? 0)
+      );
+      const avgGust =
+        winHours.length > 0
+          ? winHours.reduce((a, h) => a + h.gustMs, 0) / winHours.length
+          : 0;
+      const precipMm = winHours.reduce((a, h) => a + h.precip, 0);
+
+      const lengthScore = clamp01(win.count / RANK.idealHours);
+      const strengthScore =
+        win.count > 0
+          ? clamp01((win.avg - s.minWindMs) / RANK.idealWindOver)
+          : 0;
+      let q =
+        lengthScore * RANK.wLength +
+        strengthScore * RANK.wStrength +
+        confidence * RANK.wConfidence;
+      // poryvovost
+      const gustRatio = win.avg > 0 ? avgGust / win.avg : 1;
+      if (gustRatio > RANK.gustyRatio) {
+        q -= RANK.gustyPenalty * clamp01(gustRatio - RANK.gustyRatio);
+      }
+      // srážky
+      q -= Math.min(RANK.precipMax, precipMm * RANK.precipPerMm);
+      const qualityScore = clamp01(q);
 
       return {
         date,
@@ -173,10 +259,13 @@ export function evaluateSpot(fc: SpotForecast, s: Settings): SpotEval {
         windowAvgMs: win.avg,
         maxWindMs,
         maxGustMs,
-        score,
+        qualityScore,
         confidence,
         upside,
         outlook,
+        offshoreBlocked,
+        dirUnverified,
+        precipMm,
         hours,
         sunrise: sunMap[date]?.sunrise ?? "",
         sunset: sunMap[date]?.sunset ?? "",
