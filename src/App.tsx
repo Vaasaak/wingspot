@@ -24,6 +24,7 @@ import type { WhereOption } from "./components/WhereToGo";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { LoginModal } from "./components/LoginModal";
 import { supabase, supabaseEnabled } from "./lib/supabase";
+import { loadFavoritesFromDb, saveFavoritesToDb } from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
 
 export default function App() {
@@ -39,13 +40,25 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [showLogin, setShowLogin] = useState(false);
 
-  // sleduj přihlášení (jen když je Supabase nastavené)
+  // sleduj přihlášení + při přihlášení načti oblíbené z DB
   useEffect(() => {
     if (!supabaseEnabled || !supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session?.user.id) {
+        loadFavoritesFromDb(data.session.user.id).then((dbFavs) => {
+          if (dbFavs !== null) setFavorites(dbFavs);
+        });
+      }
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       setShowLogin(false);
+      if (s?.user.id) {
+        loadFavoritesFromDb(s.user.id).then((dbFavs) => {
+          if (dbFavs !== null) setFavorites(dbFavs);
+        });
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -70,9 +83,14 @@ export default function App() {
     load(false);
   }, []);
 
-  // ulož nastavení a oblíbené při změně
+  // ulož nastavení a oblíbené při změně (localStorage vždy, DB když přihlášen)
   useEffect(() => saveSettings(settings), [settings]);
-  useEffect(() => saveFavorites(favorites), [favorites]);
+  useEffect(() => {
+    saveFavorites(favorites);
+    if (session?.user.id) {
+      saveFavoritesToDb(session.user.id, favorites);
+    }
+  }, [favorites, session?.user.id]);
 
   function toggleFav(id: string) {
     setFavorites((f) =>
