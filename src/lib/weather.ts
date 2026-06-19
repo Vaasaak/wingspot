@@ -8,7 +8,7 @@
 // Pozn.: ALADIN (ČHMÚ) Open-Meteo nemá; jeho data jsou jen GRIB bez CORS.
 // SPOLEHLIVOST/POTENCIÁL: z rozptylu 31 variant ansámblu GEFS.
 
-import { SPOTS } from "../data/spots";
+import type { Spot } from "../data/spots";
 
 export interface SpotForecast {
   spotId: string;
@@ -39,9 +39,9 @@ const MODELS: { name: string; weight: number }[] = [
 const DET_DAYS = 16;
 const ENS_DAYS = 22;
 
-function locParams(): string {
-  const lats = SPOTS.map((s) => s.lat).join(",");
-  const lons = SPOTS.map((s) => s.lon).join(",");
+function locParams(spots: Spot[]): string {
+  const lats = spots.map((s) => s.lat).join(",");
+  const lons = spots.map((s) => s.lon).join(",");
   return `&latitude=${lats}&longitude=${lons}&timezone=Europe%2FBerlin&wind_speed_unit=ms`;
 }
 
@@ -66,14 +66,16 @@ const CACHE_KEY = "wingspot-forecast-cache-v6";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function fetchForecasts(
+  spots: Spot[],
   force = false
 ): Promise<{ data: SpotForecast[]; fetchedAt: number }> {
+  const sig = spots.map((s) => s.id).join(","); // podpis sady spotů pro cache
   if (!force) {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (raw) {
         const c = JSON.parse(raw);
-        if (Date.now() - c.fetchedAt < CACHE_TTL_MS) {
+        if (Date.now() - c.fetchedAt < CACHE_TTL_MS && c.sig === sig) {
           return { data: c.data, fetchedAt: c.fetchedAt };
         }
       }
@@ -82,7 +84,7 @@ export async function fetchForecasts(
     }
   }
 
-  const loc = locParams();
+  const loc = locParams(spots);
   const detUrl =
     `${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation` +
     `&daily=sunrise,sunset&models=${MODELS.map((m) => m.name).join(",")}` +
@@ -96,7 +98,7 @@ export async function fetchForecasts(
     fetchArray(ensUrl),
   ]);
 
-  const data: SpotForecast[] = SPOTS.map((spot, i) => {
+  const data: SpotForecast[] = spots.map((spot, i) => {
     const ensLoc = ens[i] ?? {};
     const ensH = ensLoc.hourly ?? {};
     const times: string[] = ensH.time ?? [];
@@ -228,7 +230,7 @@ export async function fetchForecasts(
 
   const fetchedAt = Date.now();
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt, data }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt, sig, data }));
   } catch {
     // cache se nemusí povést – nevadí
   }

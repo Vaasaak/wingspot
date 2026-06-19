@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { SPOTS } from "./data/spots";
+import type { Spot } from "./data/spots";
+import { loadSpots } from "./lib/spotsDb";
 import {
   loadSettings,
   saveSettings,
@@ -20,22 +22,41 @@ import type { SpotDay } from "./components/DayDetail";
 import { WhereToGo } from "./components/WhereToGo";
 import type { WhereOption } from "./components/WhereToGo";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { LoginModal } from "./components/LoginModal";
+import { supabase, supabaseEnabled } from "./lib/supabase";
+import type { Session } from "@supabase/supabase-js";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites());
+  const [spots, setSpots] = useState<Spot[]>(SPOTS); // fallback hned, DB pak
   const [forecasts, setForecasts] = useState<SpotForecast[] | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [showSettings, setShowSettings] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
+
+  // sleduj přihlášení (jen když je Supabase nastavené)
+  useEffect(() => {
+    if (!supabaseEnabled || !supabase) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      setShowLogin(false);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   async function load(force = false) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchForecasts(force);
+      const { spots: loaded } = await loadSpots(); // DB nebo fallback
+      setSpots(loaded);
+      const res = await fetchForecasts(loaded, force);
       setForecasts(res.data);
       setFetchedAt(res.fetchedAt);
     } catch (e: any) {
@@ -65,7 +86,7 @@ export default function App() {
 
     // spoty v dosahu + vzdálenost
     const fcById = new Map(forecasts.map((f) => [f.spotId, f]));
-    const inRange = SPOTS.map((spot) => ({
+    const inRange = spots.map((spot) => ({
       spot,
       dist: distanceKm(settings.homeLat, settings.homeLon, spot.lat, spot.lon),
     })).filter((x) => x.dist <= settings.maxDistanceKm);
@@ -162,7 +183,7 @@ export default function App() {
       .slice(0, 3);
 
     return { dates, spotDaysByDate, calendar, topOptions };
-  }, [forecasts, settings]);
+  }, [forecasts, settings, spots]);
 
   // vyber výchozí den
   useEffect(() => {
@@ -186,13 +207,29 @@ export default function App() {
             </div>
           </div>
         </div>
-        <button
-          className="icon-btn gear"
-          onClick={() => setShowSettings(true)}
-          title="Nastavení"
-        >
-          ⚙
-        </button>
+        <div className="topbar-actions">
+          {supabaseEnabled &&
+            (session ? (
+              <button
+                className="auth-btn"
+                onClick={() => supabase?.auth.signOut()}
+                title={session.user.email ?? ""}
+              >
+                👤 Odhlásit
+              </button>
+            ) : (
+              <button className="auth-btn" onClick={() => setShowLogin(true)}>
+                Přihlásit
+              </button>
+            ))}
+          <button
+            className="icon-btn gear"
+            onClick={() => setShowSettings(true)}
+            title="Nastavení"
+          >
+            ⚙
+          </button>
+        </div>
       </header>
 
       {loading && !forecasts && (
@@ -250,6 +287,8 @@ export default function App() {
           loading={loading}
         />
       )}
+
+      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </div>
   );
 }
