@@ -100,3 +100,29 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- =====================================================================
+--  Fáze 3c: komunitní spoty – vkládání + admin moderace
+-- =====================================================================
+
+-- přihlášený uživatel může přidat spot (jen pending, created_by = sebe)
+drop policy if exists "auth users can add spots" on spots;
+create policy "auth users can add spots"
+  on spots for insert
+  with check (
+    auth.uid() is not null
+    and status = 'pending'
+    and created_by = auth.uid()
+  );
+
+-- admin vidí všechny spoty (včetně pending/rejected)
+drop policy if exists "admin read all spots" on spots;
+create policy "admin read all spots"
+  on spots for select
+  using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');
+
+-- admin může měnit status spotů
+drop policy if exists "admin update spots" on spots;
+create policy "admin update spots"
+  on spots for update
+  using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');

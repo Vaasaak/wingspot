@@ -676,6 +676,65 @@
   border-top-style: dashed;
 }
 
+/* ---------- PŘIDAT SPOT / ADMIN PANEL ---------- */
+.text-input {
+  display: block;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+}
+.text-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.text-input option {
+  background: var(--bg-2);
+}
+
+.pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 0 4px;
+}
+.pending-spot {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.pending-spot-name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.pending-spot-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.approve-btn {
+  background: var(--good);
+  color: #04121d;
+}
+.approve-btn:hover {
+  filter: brightness(1.1);
+}
+.reject-btn {
+  background: var(--card-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.reject-btn:hover {
+  background: #b91c1c;
+  color: #fff;
+  border-color: #b91c1c;
+}
+
 .footer {
   margin-top: 28px;
   text-align: center;

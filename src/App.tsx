@@ -23,9 +23,13 @@ import { WhereToGo } from "./components/WhereToGo";
 import type { WhereOption } from "./components/WhereToGo";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { LoginModal } from "./components/LoginModal";
+import { AddSpotModal } from "./components/AddSpotModal";
+import { AdminPanel } from "./components/AdminPanel";
 import { supabase, supabaseEnabled } from "./lib/supabase";
 import { loadFavoritesFromDb, saveFavoritesToDb } from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
+
+const ADMIN_EMAIL = "vasikpicasa@gmail.com";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
@@ -39,6 +43,10 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [showAddSpot, setShowAddSpot] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  const isAdmin = session?.user.email === ADMIN_EMAIL;
 
   // sleduj přihlášení + při přihlášení načti oblíbené z DB
   useEffect(() => {
@@ -226,20 +234,39 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          {supabaseEnabled &&
-            (session ? (
+          {supabaseEnabled && (
+            <>
+              {isAdmin && (
+                <button
+                  className="icon-btn"
+                  onClick={() => setShowAdmin(true)}
+                  title="Admin panel"
+                >
+                  🔧
+                </button>
+              )}
               <button
-                className="auth-btn"
-                onClick={() => supabase?.auth.signOut()}
-                title={session.user.email ?? ""}
+                className="icon-btn"
+                onClick={() => (session ? setShowAddSpot(true) : setShowLogin(true))}
+                title="Přidat spot"
               >
-                👤 Odhlásit
+                📍
               </button>
-            ) : (
-              <button className="auth-btn" onClick={() => setShowLogin(true)}>
-                Přihlásit
-              </button>
-            ))}
+              {session ? (
+                <button
+                  className="auth-btn"
+                  onClick={() => supabase?.auth.signOut()}
+                  title={session.user.email ?? ""}
+                >
+                  👤 Odhlásit
+                </button>
+              ) : (
+                <button className="auth-btn" onClick={() => setShowLogin(true)}>
+                  Přihlásit
+                </button>
+              )}
+            </>
+          )}
           <button
             className="icon-btn gear"
             onClick={() => setShowSettings(true)}
@@ -307,6 +334,15 @@ export default function App() {
       )}
 
       {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
+      {showAddSpot && session && (
+        <AddSpotModal session={session} onClose={() => setShowAddSpot(false)} />
+      )}
+      {showAdmin && isAdmin && (
+        <AdminPanel
+          onClose={() => setShowAdmin(false)}
+          onApproved={() => load(true)}
+        />
+      )}
     </div>
   );
 }
