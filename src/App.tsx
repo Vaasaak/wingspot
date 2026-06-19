@@ -25,6 +25,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { LoginModal } from "./components/LoginModal";
 import { AddSpotModal } from "./components/AddSpotModal";
 import { AdminPanel } from "./components/AdminPanel";
+import { ReportModal } from "./components/ReportModal";
 import { supabase, supabaseEnabled } from "./lib/supabase";
 import { loadFavoritesFromDb, saveFavoritesToDb } from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
@@ -45,6 +46,7 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showAddSpot, setShowAddSpot] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [reportingSpot, setReportingSpot] = useState<import("./data/spots").Spot | null>(null);
 
   const isAdmin = session?.user.email === ADMIN_EMAIL;
 
@@ -298,6 +300,23 @@ export default function App() {
             onSelectDay={setSelectedDate}
           />
 
+          {/* Banner – CTA pro přidání spotu */}
+          {supabaseEnabled && (
+            <div className="add-spot-banner">
+              <div>
+                <div className="add-spot-banner-title">📍 Znáš dobrý wingfoil spot?</div>
+                <div className="muted small">Přidej ho do databáze – po schválení ho uvidí všichni</div>
+              </div>
+              <button
+                className="btn"
+                onClick={() => session ? setShowAddSpot(true) : setShowLogin(true)}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                + Přidat spot
+              </button>
+            </div>
+          )}
+
           <h3 className="section-label">📅 Předpověď po dnech</h3>
           <Calendar
             days={derived.calendar}
@@ -312,6 +331,7 @@ export default function App() {
               minWindMs={settings.minWindMs}
               favorites={favorites}
               onToggleFav={toggleFav}
+              onReport={setReportingSpot}
             />
           )}
         </>
@@ -335,7 +355,14 @@ export default function App() {
 
       {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
       {showAddSpot && session && (
-        <AddSpotModal session={session} onClose={() => setShowAddSpot(false)} />
+        <AddSpotModal
+          session={session}
+          existingSpots={spots}
+          onClose={() => setShowAddSpot(false)}
+        />
+      )}
+      {reportingSpot && (
+        <ReportModal spot={reportingSpot} onClose={() => setReportingSpot(null)} />
       )}
       {showAdmin && isAdmin && (
         <AdminPanel

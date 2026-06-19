@@ -676,6 +676,23 @@
   border-top-style: dashed;
 }
 
+/* ---------- BANNER – PŘIDAT SPOT ---------- */
+.add-spot-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: linear-gradient(135deg, var(--card-2), var(--card));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+}
+.add-spot-banner-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
 /* ---------- PŘIDAT SPOT / ADMIN PANEL ---------- */
 .text-input {
   display: block;
@@ -733,6 +750,179 @@
   background: #b91c1c;
   color: #fff;
   border-color: #b91c1c;
+}
+
+/* GPS feedback */
+.gps-ok  { color: var(--good); margin: 4px 0 0; }
+.input-error { outline: 2px solid #f87171 !important; }
+.field-hint { font-size: 0.82rem; font-weight: 400; color: var(--accent); }
+
+/* Duplikát varování */
+.duplicate-warning {
+  background: color-mix(in srgb, var(--potential) 18%, var(--card));
+  border: 1px solid var(--potential);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+/* Vybavenost – formulář */
+.facilities-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+.fac-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fac-label {
+  min-width: 110px;
+  font-size: 0.9rem;
+}
+.fac-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Vybavenost – zobrazení na spotu */
+.facilities-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.fac-chip {
+  font-size: 0.78rem;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.fac-chip.fac-no {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* Tlačítko Nahlásit */
+.spot-note-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.report-btn {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.report-btn:hover {
+  color: #fca5a5;
+  border-color: #fca5a5;
+}
+
+/* Výběr problémů ve formuláři hlášení */
+.issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.issue-list .chip {
+  text-align: left;
+  justify-content: flex-start;
+  border-radius: 10px;
+}
+
+/* Admin – záložky */
+.admin-modal {
+  max-width: 640px;
+}
+.admin-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  padding: 0 18px;
+}
+.admin-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 10px 14px;
+  font-size: 0.92rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.admin-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.tab-badge {
+  background: var(--accent);
+  color: #04121d;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Admin – cluster duplikátů */
+.pending-cluster {
+  margin-bottom: 16px;
+}
+.pending-cluster.duplicate {
+  border: 1px solid var(--potential);
+  border-radius: 14px;
+  padding: 10px;
+}
+.cluster-badge {
+  font-size: 0.82rem;
+  color: var(--potential);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.cluster-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* Admin – OSM mapa */
+.admin-map {
+  width: 100%;
+  height: 160px;
+  border: none;
+  border-radius: 8px;
+  margin-top: 8px;
+  display: block;
+}
+
+/* Admin – Windguru řádek */
+.admin-windguru-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .footer {

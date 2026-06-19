@@ -126,3 +126,45 @@ drop policy if exists "admin update spots" on spots;
 create policy "admin update spots"
   on spots for update
   using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');
+
+-- =====================================================================
+--  Fáze 3c doplněk: vybavenost spotů + hlášení chyb
+-- =====================================================================
+
+-- vybavenost (parking, wc, občerstvení, stín, půjčovna)
+alter table spots add column if not exists facilities jsonb;
+
+-- tabulka hlášení (opravy chyb na existujících spotech)
+create table if not exists reports (
+  id          uuid primary key default gen_random_uuid(),
+  spot_id     text not null references spots(id) on delete cascade,
+  reporter_id uuid references auth.users(id),
+  kind        text not null default 'correction',
+  issues      text[],
+  suggested_name        text,
+  suggested_lat         double precision,
+  suggested_lon         double precision,
+  suggested_windguru_url text,
+  message     text,
+  status      text not null default 'pending',
+  created_at  timestamptz not null default now()
+);
+
+alter table reports enable row level security;
+
+-- kdokoli (i nepřihlášený) může podat hlášení
+drop policy if exists "anyone can report" on reports;
+create policy "anyone can report"
+  on reports for insert
+  with check (true);
+
+-- admin čte a mění všechna hlášení
+drop policy if exists "admin read reports" on reports;
+create policy "admin read reports"
+  on reports for select
+  using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');
+
+drop policy if exists "admin update reports" on reports;
+create policy "admin update reports"
+  on reports for update
+  using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');

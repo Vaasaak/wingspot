@@ -1,4 +1,5 @@
 import type { Spot } from "../data/spots";
+// Spot import is used in onReport callback type
 import type { DayEval } from "../lib/scoring";
 import { fmtWeekdayLong, fmtDayMonth, fmtClock } from "../lib/format";
 import { SpotRow } from "./SpotRow";
@@ -15,12 +16,14 @@ export function DayDetail({
   minWindMs,
   favorites,
   onToggleFav,
+  onReport,
 }: {
   date: string;
   spotDays: SpotDay[];
   minWindMs: number;
   favorites: string[];
   onToggleFav: (id: string) => void;
+  onReport?: (spot: Spot) => void;
 }) {
   const sun = spotDays[0]?.day;
   const isOutlook = spotDays[0]?.day.outlook ?? false;
@@ -65,6 +68,7 @@ export function DayDetail({
             minWindMs={minWindMs}
             isFavorite={favorites.includes(spot.id)}
             onToggleFav={() => onToggleFav(spot.id)}
+            onReport={onReport ? () => onReport(spot) : undefined}
           />
         ))}
         {spotDays.length === 0 && (

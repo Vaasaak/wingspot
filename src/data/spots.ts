@@ -18,6 +18,14 @@ export interface DirRange {
   to: number;
 }
 
+export interface SpotFacilities {
+  parking?: "free" | "paid" | "none";
+  wc?: boolean;
+  refreshments?: boolean;
+  shade?: boolean;
+  rental?: boolean;
+}
+
 export interface Spot {
   id: string;
   name: string;
@@ -25,13 +33,10 @@ export interface Spot {
   lat: number;
   lon: number;
   note?: string;
-  windguru?: string; // odkaz na Windguru pro křížovou kontrolu
-  // Z jakých směrů na spotu pěkně fouká (onshore/cross-on). Když prázdné,
-  // appka jede jen podle síly a označí „směr neověřen".
+  windguru?: string;
   goodDirs?: DirRange[];
-  // Nebezpečné směry (offshore = fouká od břehu na vodu). Hodina s takovým
-  // směrem NIKDY není jezditelná, i kdyby foukalo skvěle.
   badDirs?: DirRange[];
+  facilities?: SpotFacilities;
 }
 
 export const SPOTS: Spot[] = [

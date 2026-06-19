@@ -5,6 +5,8 @@ import { fmtMs, fmtWindow } from "../lib/format";
 import { RATING_META, confidenceLabel } from "../lib/ui";
 import { HourlyChart } from "./HourlyChart";
 
+const PARKING_LABEL: Record<string, string> = { free: "🅿️ Zdarma", paid: "🅿️ Placené", none: "🚫 Parking" };
+
 export function SpotRow({
   spot,
   day,
@@ -12,6 +14,7 @@ export function SpotRow({
   minWindMs,
   isFavorite,
   onToggleFav,
+  onReport,
 }: {
   spot: Spot;
   day: DayEval;
@@ -19,6 +22,7 @@ export function SpotRow({
   minWindMs: number;
   isFavorite: boolean;
   onToggleFav: () => void;
+  onReport?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const meta = RATING_META[day.rating];
@@ -115,17 +119,42 @@ export function SpotRow({
                 podle síly.
               </p>
             )}
-            {spot.windguru && (
-              <a
-                className="windguru-link"
-                href={spot.windguru}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Ověřit na Windguru ↗
-              </a>
+            {/* Vybavenost */}
+            {spot.facilities && (
+              <div className="facilities-row">
+                {spot.facilities.parking && (
+                  <span className="fac-chip">{PARKING_LABEL[spot.facilities.parking]}</span>
+                )}
+                {spot.facilities.wc      === true  && <span className="fac-chip">🚻 WC</span>}
+                {spot.facilities.wc      === false && <span className="fac-chip fac-no">🚻 Bez WC</span>}
+                {spot.facilities.refreshments === true  && <span className="fac-chip">🍦 Občerstvení</span>}
+                {spot.facilities.refreshments === false && <span className="fac-chip fac-no">🍦 Bez občerstvení</span>}
+                {spot.facilities.shade   === true  && <span className="fac-chip">🌳 Stín</span>}
+                {spot.facilities.rental  === true  && <span className="fac-chip">🏄 Půjčovna</span>}
+              </div>
             )}
+
+            <div className="spot-note-actions">
+              {spot.windguru && (
+                <a
+                  className="windguru-link"
+                  href={spot.windguru}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Ověřit na Windguru ↗
+                </a>
+              )}
+              {onReport && (
+                <button
+                  className="report-btn"
+                  onClick={(e) => { e.stopPropagation(); onReport(); }}
+                >
+                  ⚑ Nahlásit problém
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

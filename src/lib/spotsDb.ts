@@ -16,6 +16,7 @@ interface DbSpot {
   bad_dirs: { from: number; to: number }[] | null;
   note: string | null;
   windguru_url: string | null;
+  facilities: Record<string, unknown> | null;
 }
 
 function mapDbSpot(r: DbSpot): Spot {
@@ -29,6 +30,7 @@ function mapDbSpot(r: DbSpot): Spot {
     windguru: r.windguru_url ?? undefined,
     goodDirs: r.good_dirs ?? undefined,
     badDirs: r.bad_dirs ?? undefined,
+    facilities: r.facilities ?? undefined,
   };
 }
 
@@ -43,7 +45,7 @@ export async function loadSpots(): Promise<{
     const { data, error } = await supabase
       .from("spots")
       .select(
-        "id,name,country,lat,lon,good_dirs,bad_dirs,note,windguru_url"
+        "id,name,country,lat,lon,good_dirs,bad_dirs,note,windguru_url,facilities"
       )
       .eq("status", "approved");
     if (error || !data || data.length === 0) {
