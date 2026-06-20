@@ -174,3 +174,23 @@ drop policy if exists "admin delete spots" on spots;
 create policy "admin delete spots"
   on spots for delete
   using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');
+
+-- =====================================================================
+--  Fáze 3d: sdílená cache předpovědí (zapisuje Netlify funkce)
+-- =====================================================================
+
+create table if not exists forecast_cache (
+  cache_key  text primary key,          -- = spot.id
+  data       jsonb not null,            -- zpracovaný SpotForecast objekt
+  fetched_at timestamptz not null default now()
+);
+
+alter table forecast_cache enable row level security;
+
+-- kdokoli (i nepřihlášený) může číst cache
+drop policy if exists "public read forecast cache" on forecast_cache;
+create policy "public read forecast cache"
+  on forecast_cache for select
+  using (true);
+
+-- zápis jen přes service_role (Netlify funkce) — obchází RLS automaticky
