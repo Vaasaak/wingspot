@@ -26,6 +26,7 @@ import { LoginModal } from "./components/LoginModal";
 import { AddSpotModal } from "./components/AddSpotModal";
 import { AdminPanel } from "./components/AdminPanel";
 import { ReportModal } from "./components/ReportModal";
+import { AlertsModal } from "./components/AlertsModal";
 import { supabase, supabaseEnabled } from "./lib/supabase";
 import { loadFavoritesFromDb, saveFavoritesToDb } from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
@@ -46,6 +47,7 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showAddSpot, setShowAddSpot] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false);
   const [reportingSpot, setReportingSpot] = useState<import("./data/spots").Spot | null>(null);
 
   const isAdmin = session?.user.email === ADMIN_EMAIL;
@@ -247,6 +249,15 @@ export default function App() {
                   🔧
                 </button>
               )}
+              {session && (
+                <button
+                  className="icon-btn"
+                  onClick={() => setShowAlerts(true)}
+                  title="Alerty na vítr"
+                >
+                  🔔
+                </button>
+              )}
               <button
                 className="icon-btn"
                 onClick={() => (session ? setShowAddSpot(true) : setShowLogin(true))}
@@ -363,6 +374,13 @@ export default function App() {
       )}
       {reportingSpot && (
         <ReportModal spot={reportingSpot} onClose={() => setReportingSpot(null)} />
+      )}
+      {showAlerts && session && (
+        <AlertsModal
+          session={session}
+          spots={spots}
+          onClose={() => setShowAlerts(false)}
+        />
       )}
       {showAdmin && isAdmin && (
         <AdminPanel

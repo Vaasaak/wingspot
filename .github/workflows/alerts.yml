@@ -1,0 +1,21 @@
+name: Daily wind alerts
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # každý den v 6:00 SEČ (= 5:00 UTC)
+  workflow_dispatch:        # možnost spustit ručně z GitHub UI
+
+jobs:
+  send-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger send-alerts function
+        run: |
+          STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            "https://wingspot.netlify.app/.netlify/functions/send-alerts?secret=${{ secrets.ALERT_SECRET }}")
+          cat /tmp/response.json
+          echo ""
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: HTTP $STATUS"
+            exit 1
+          fi
