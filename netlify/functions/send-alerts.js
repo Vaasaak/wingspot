@@ -219,12 +219,19 @@ exports.handler = async (event) => {
     return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: "unauthorized" }) };
   }
 
+  const testMode = event.queryStringParameters?.test === "true";
+
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendKey   = process.env.RESEND_API_KEY;
 
   if (!supabaseUrl || !serviceKey || !resendKey) {
-    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: "missing env vars" }) };
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({
+      error: "missing env vars",
+      has_supabase_url: !!supabaseUrl,
+      has_service_key: !!serviceKey,
+      has_resend_key: !!resendKey,
+    })};
   }
 
   // 1. Načti aktivní alerty
@@ -247,28 +254,34 @@ exports.handler = async (event) => {
 
   // 3. Načti forecasty
   const forecastMap = {};
+  const forecastErrors = {};
   await Promise.all(spotIds.map(async (id) => {
     const spot = spotMap[id];
-    if (!spot) return;
-    try { forecastMap[id] = await getForecast(spot, supabaseUrl, serviceKey); } catch { /* skip */ }
+    if (!spot) { forecastErrors[id] = "spot not found in DB"; return; }
+    try { forecastMap[id] = await getForecast(spot, supabaseUrl, serviceKey); }
+    catch (e) { forecastErrors[id] = e.message; }
   }));
 
   // 4. Zkontroluj podmínky + seskup emaily
   const emailsToSend = {};
   const alertsToMark = [];
+  const skipped = [];
 
   for (const alert of alerts) {
-    // Neodesílat duplicitně (cooldown 20 hod)
-    if (alert.last_sent_at) {
+    // Neodesílat duplicitně (cooldown 20 hod) — v test režimu přeskočíme
+    if (!testMode && alert.last_sent_at) {
       const age = Date.now() - new Date(alert.last_sent_at).getTime();
-      if (age < 20 * 60 * 60 * 1000) continue;
+      if (age < 20 * 60 * 60 * 1000) { skipped.push({ id: alert.id, reason: "cooldown" }); continue; }
     }
 
     const forecast = forecastMap[alert.spot_id];
-    if (!forecast) continue;
+    if (!forecast) { skipped.push({ id: alert.id, reason: `no forecast: ${forecastErrors[alert.spot_id] ?? "unknown"}` }); continue; }
 
-    const windows = checkAlert(forecast, alert);
-    if (!windows.length) continue;
+    const windows = testMode
+      ? [{ date: new Date().toISOString().slice(0, 10), hours: 4, avgWind: alert.min_wind_ms + 1, maxGust: alert.min_wind_ms + 2 }]
+      : checkAlert(forecast, alert);
+
+    if (!windows.length) { skipped.push({ id: alert.id, reason: "no matching wind window" }); continue; }
 
     const spot = spotMap[alert.spot_id];
     if (!emailsToSend[alert.user_email]) emailsToSend[alert.user_email] = [];
@@ -277,6 +290,7 @@ exports.handler = async (event) => {
 
   // 5. Odešli emaily
   let sent = 0;
+  const emailErrors = [];
   for (const [email, items] of Object.entries(emailsToSend)) {
     for (const { spot, windows, alertId } of items) {
       try {
@@ -286,15 +300,22 @@ exports.handler = async (event) => {
           body: JSON.stringify({
             from: "WingSpot <onboarding@resend.dev>",
             to: [email],
-            subject: `🌬️ Okno na ${spot.name} – ${windows[0] ? formatDate(windows[0].date) : ""}`,
+            subject: testMode
+              ? `🧪 WingSpot test – ${spot.name}`
+              : `🌬️ Okno na ${spot.name} – ${windows[0] ? formatDate(windows[0].date) : ""}`,
             html: buildEmail(spot.name, spot.windguru_url, windows),
           }),
         });
         if (res.ok) {
           sent++;
-          alertsToMark.push(alertId);
+          if (!testMode) alertsToMark.push(alertId);
+        } else {
+          const body = await res.text();
+          emailErrors.push({ email, status: res.status, body });
         }
-      } catch { /* pokračuj na další */ }
+      } catch (e) {
+        emailErrors.push({ email, error: e.message });
+      }
     }
   }
 
@@ -307,5 +328,11 @@ exports.handler = async (event) => {
     ).catch(() => {})
   ));
 
-  return { statusCode: 200, headers: CORS, body: JSON.stringify({ sent, checked: alerts.length }) };
+  return { statusCode: 200, headers: CORS, body: JSON.stringify({
+    sent,
+    checked: alerts.length,
+    skipped,
+    ...(emailErrors.length ? { emailErrors } : {}),
+    ...(testMode ? { testMode: true } : {}),
+  })};
 };
