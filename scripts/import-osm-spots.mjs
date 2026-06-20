@@ -24,8 +24,8 @@ const LAT_MIN = 27, LAT_MAX = 72;
 const LON_MIN = -19, LON_MAX = 42;
 const TILE_SIZE = 6;
 
-const HIGH_TRUST_TAGS = ["windsurfing", "kitesurfing", "kiteboarding"];
-const LOW_TRUST_TAGS  = ["sailing"];
+const HIGH_TRUST_TAGS = new Set(["windsurfing", "kitesurfing", "kiteboarding"]);
+const ALL_TAGS = [...HIGH_TRUST_TAGS, "sailing"];
 
 const CLUSTER_RADIUS_KM = 0.8;
 const DEDUP_RADIUS_KM   = 1.5;
@@ -41,12 +41,13 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function buildQuery(s, w, n, e, tags) {
-  const union = tags.flatMap(t => [
+function buildQuery(s, w, n, e) {
+  // Jeden dotaz pro všechny tagy najednou — half the requests
+  const union = ALL_TAGS.flatMap(t => [
     `node["sport"="${t}"](${s},${w},${n},${e});`,
     `way["sport"="${t}"](${s},${w},${n},${e});`,
   ]).join("\n  ");
-  return `[out:json][timeout:90];\n(\n  ${union}\n);\nout center;`;
+  return `[out:json][timeout:90];\n(\n  ${union}\n);\nout center tags;`;
 }
 
 async function fetchWithTimeout(url, options, timeoutMs = 120000) {
@@ -59,8 +60,8 @@ async function fetchWithTimeout(url, options, timeoutMs = 120000) {
   }
 }
 
-async function queryTile(s, w, n, e, tags) {
-  const body = new URLSearchParams({ data: buildQuery(s, w, n, e, tags) }).toString();
+async function queryTile(s, w, n, e) {
+  const body = new URLSearchParams({ data: buildQuery(s, w, n, e) }).toString();
   const opts = {
     method: "POST",
     headers: {
@@ -186,23 +187,20 @@ for (const [s, w, n, e] of tiles) {
   process.stdout.write(`\r[${tileIdx}/${tiles.length}] ${s},${w},${n},${e}   `);
 
   try {
-    const hiEls = await queryTile(s, w, n, e, HIGH_TRUST_TAGS);
-    for (const el of hiEls) {
+    const els = await queryTile(s, w, n, e);
+    for (const el of els) {
       const pt = elementToPoint(el);
-      if (pt) allPoints.push({ ...pt, name: el.tags?.name ?? null, osmId: String(el.id), trust: "community_confirmed" });
+      if (!pt) continue;
+      const sport = el.tags?.sport ?? "";
+      const trust = HIGH_TRUST_TAGS.has(sport) ? "community_confirmed" : "community";
+      allPoints.push({ ...pt, name: el.tags?.name ?? null, osmId: String(el.id), trust });
     }
-    await sleep(2000);
-    const loEls = await queryTile(s, w, n, e, LOW_TRUST_TAGS);
-    for (const el of loEls) {
-      const pt = elementToPoint(el);
-      if (pt) allPoints.push({ ...pt, name: el.tags?.name ?? null, osmId: String(el.id), trust: "community" });
-    }
-    process.stdout.write(` +${hiEls.length + loEls.length}`);
+    process.stdout.write(` +${els.length}`);
   } catch (e) {
     console.warn(`\nChyba na dlaždici ${s},${w},${n},${e}: ${e.message}`);
   }
 
-  await sleep(2500); // rate-limit Overpass
+  await sleep(2000); // rate-limit Overpass
 }
 
 console.log(`\n\nCelkem prvků z OSM: ${allPoints.length}`);
