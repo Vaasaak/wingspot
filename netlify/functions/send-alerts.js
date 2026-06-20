@@ -1,72 +1,31 @@
 // Denní kontrola alertů + odeslání emailů přes Resend.
 // Voláno GitHub Actions cron jobem každý den v 6:00.
-// Zabezpečeno ALERT_SECRET query parametrem.
+// Zabezpečeno hlavičkou X-Alert-Secret (nebo fallback query secret).
+// Forecast logika importuje ze shared/forecast-core.js — jeden zdroj pravdy.
+
+import { MODELS, DET_DAYS, ENS_DAYS, processForecast } from "../../shared/forecast-core.js";
 
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble";
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hodiny
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
-const MODELS = [
-  { name: "meteofrance_arome_france_hd", weight: 5 },
-  { name: "icon_d2", weight: 5 },
-  { name: "dmi_harmonie_arome_europe", weight: 4 },
-  { name: "knmi_harmonie_arome_europe", weight: 3 },
-  { name: "icon_eu", weight: 2 },
-  { name: "ecmwf_ifs025", weight: 1.5 },
-  { name: "gfs_seamless", weight: 1 },
-];
-
-// ── Zpracování předpovědi (kopie z forecast.js) ───────────────────────────
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
-  const d = await res.json();
-  return Array.isArray(d) ? d : [d];
-}
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function avg(xs) { return xs.reduce((s, v) => s + v, 0) / xs.length; }
-function pct(sorted, p) {
-  if (!sorted.length) return 0;
-  return sorted[Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * p)))];
+
+function inDirRange(deg, r) {
+  return r.from <= r.to
+    ? deg >= r.from && deg <= r.to
+    : deg >= r.from || deg <= r.to;
 }
 
-function processForecast(spotId, det, ens) {
-  const ensH = (ens[0] ?? {}).hourly ?? {};
-  const times = ensH.time ?? [];
-  const memberKeys = Object.keys(ensH).filter(k => k === "wind_speed_10m" || k.startsWith("wind_speed_10m_member"));
-  const memberArrays = memberKeys.map(k => ensH[k] ?? []);
-  const detLoc = det[0] ?? {};
-  const detH = detLoc.hourly ?? {};
-  const detTimes = detH.time ?? [];
-  const mWind = MODELS.map(m => detH[`wind_speed_10m_${m.name}`] ?? []);
-  const mGust  = MODELS.map(m => detH[`wind_gusts_10m_${m.name}`] ?? []);
-  const detIdx = {};
-  detTimes.forEach((t, i) => { detIdx[t] = i; });
-
-  const windMs = [], gustMs = [], isOutlook = [];
-  for (let h = 0; h < times.length; h++) {
-    const members = memberArrays.map(a => a[h]).filter(v => typeof v === "number").sort((a,b) => a-b);
-    const mean = members.length ? avg(members) : null;
-    const di = detIdx[times[h]];
-    let wind = null, gust = 0, outlook = true;
-    if (di !== undefined) {
-      let wSum = 0, wWt = 0, gSum = 0, gWt = 0;
-      for (let k = 0; k < MODELS.length; k++) {
-        const wt = MODELS[k].weight;
-        const v = mWind[k][di]; if (typeof v === "number") { wSum += v*wt; wWt += wt; }
-        const gv = mGust[k][di]; if (typeof gv === "number") { gSum += gv*wt; gWt += wt; }
-      }
-      if (wWt > 0) { wind = wSum/wWt; gust = Math.max(gWt > 0 ? gSum/gWt : 0, wind); outlook = false; }
-    }
-    if (wind === null) { wind = mean ?? 0; gust = wind; outlook = true; }
-    windMs.push(wind); gustMs.push(gust); isOutlook.push(outlook);
-  }
-  const dDaily = detLoc.daily ?? {};
-  const daily = (dDaily.time ?? []).map((date, i) => ({
-    date, sunrise: dDaily.sunrise?.[i] ?? "", sunset: dDaily.sunset?.[i] ?? "",
-  }));
-  return { spotId, times, windMs, gustMs, isOutlook, daily };
+// Vrací false pokud je směr offshore nebo mimo goodDirs (když jsou nastaveny).
+// null dir = výhledová hodina → pustíme přes (směr neznámý).
+function isDirOk(dir, goodDirs, badDirs) {
+  if (dir === null) return true;
+  if (badDirs?.length && badDirs.some(r => inDirRange(dir, r))) return false;
+  if (!goodDirs?.length) return true;  // spot nemá ověřený směr → pustíme
+  return goodDirs.some(r => inDirRange(dir, r));
 }
 
 // ── Supabase helpers ──────────────────────────────────────────────────────
@@ -96,7 +55,6 @@ async function sbPatch(url, key, body) {
 // ── Forecast: zkus cache, jinak stáhni čerstvé ───────────────────────────
 
 async function getForecast(spot, supabaseUrl, serviceKey) {
-  // Zkus cache
   try {
     const rows = await sbGet(
       `${supabaseUrl}/rest/v1/forecast_cache?cache_key=eq.${encodeURIComponent(spot.id)}&select=data,fetched_at`,
@@ -107,15 +65,19 @@ async function getForecast(spot, supabaseUrl, serviceKey) {
     }
   } catch { /* pokračuj na přímý fetch */ }
 
-  // Stáhni čerstvé
   const loc = `&latitude=${spot.lat}&longitude=${spot.lon}&timezone=Europe%2FBerlin&wind_speed_unit=ms`;
-  const [det, ens] = await Promise.all([
-    fetchJson(`${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m&daily=sunrise,sunset&models=${MODELS.map(m=>m.name).join(",")}&forecast_days=16${loc}`),
-    fetchJson(`${ENSEMBLE_URL}?hourly=wind_speed_10m&models=gfs05&forecast_days=22${loc}`),
-  ]);
-  const forecast = processForecast(spot.id, det, ens);
+  const detUrl =
+    `${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation` +
+    `&daily=sunrise,sunset&models=${MODELS.map(m => m.name).join(",")}&forecast_days=${DET_DAYS}${loc}`;
+  const ensUrl =
+    `${ENSEMBLE_URL}?hourly=wind_speed_10m&models=gfs05&forecast_days=${ENS_DAYS}${loc}`;
 
-  // Ulož do cache (fire-and-forget)
+  const [detArr, ensArr] = await Promise.all([
+    fetch(detUrl).then(r => r.json()).then(d => Array.isArray(d) ? d : [d]),
+    fetch(ensUrl).then(r => r.json()).then(d => Array.isArray(d) ? d : [d]),
+  ]);
+  const forecast = processForecast(spot.id, detArr[0] ?? {}, ensArr[0] ?? {});
+
   sbPost(`${supabaseUrl}/rest/v1/forecast_cache`, serviceKey,
     { cache_key: spot.id, data: forecast, fetched_at: new Date().toISOString() },
     "resolution=merge-duplicates"
@@ -125,36 +87,56 @@ async function getForecast(spot, supabaseUrl, serviceKey) {
 }
 
 // ── Kontrola podmínek alertu ──────────────────────────────────────────────
+// Stejná logika jako scoring.ts → alert smí poslat jen okno, které by appka
+// označila good/great: vítr ≥ min_wind_ms, směr OK (ne offshore, v goodDirs),
+// srážky max 2 mm v okně, alespoň MIN_SESSION_HOURS hodin.
 
-function checkAlert(forecast, alert) {
+const MIN_SESSION_HOURS = 2;
+
+function checkAlert(forecast, alert, goodDirs, badDirs) {
   const now = new Date();
   const windows = [];
 
-  // Seskup hodiny po dnech
   const byDay = {};
   for (let i = 0; i < forecast.times.length; i++) {
-    const t = forecast.times[i]; // "2026-06-20T14:00"
-    const date = t.slice(0, 10);
-    const hour = parseInt(t.slice(11, 13));
-    const daysAhead = Math.floor((new Date(date) - new Date(now.toISOString().slice(0, 10))) / 86400000);
+    const t      = forecast.times[i];
+    const date   = t.slice(0, 10);
+    const hour   = parseInt(t.slice(11, 13));
+    const daysAhead = Math.floor(
+      (new Date(date) - new Date(now.toISOString().slice(0, 10))) / 86400000
+    );
     if (daysAhead < 1 || daysAhead > alert.max_days_ahead) continue;
     if (!byDay[date]) byDay[date] = [];
-    byDay[date].push({ hour, wind: forecast.windMs[i], gust: forecast.gustMs[i] });
+    byDay[date].push({
+      hour,
+      wind:   forecast.windMs[i],
+      gust:   forecast.gustMs[i],
+      dir:    forecast.windDir?.[i] ?? null,
+      precip: forecast.precip?.[i] ?? 0,
+    });
   }
 
   for (const [date, hours] of Object.entries(byDay)) {
-    // Víkend filtr
     if (alert.weekends_only) {
-      const dow = new Date(date).getDay(); // 0=Ne, 6=So
+      const dow = new Date(date).getDay();
       if (dow !== 0 && dow !== 6) continue;
     }
-    // Denní hodiny (8–20) kde fouká dost
-    const good = hours.filter(h => h.hour >= 8 && h.hour <= 20 && h.wind >= alert.min_wind_ms);
-    if (good.length >= 2) {
-      const avgWind = avg(good.map(h => h.wind));
-      const maxGust = Math.max(...good.map(h => h.gust));
-      windows.push({ date, hours: good.length, avgWind, maxGust });
-    }
+    const good = hours.filter(h =>
+      h.hour >= 8 && h.hour <= 20 &&
+      h.wind >= alert.min_wind_ms &&
+      isDirOk(h.dir, goodDirs, badDirs)
+    );
+    if (good.length < MIN_SESSION_HOURS) continue;
+
+    const precipTotal = good.reduce((s, h) => s + h.precip, 0);
+    if (precipTotal > 2) continue;
+
+    windows.push({
+      date,
+      hours:   good.length,
+      avgWind: avg(good.map(h => h.wind)),
+      maxGust: Math.max(...good.map(h => h.gust)),
+    });
   }
 
   return windows;
@@ -163,8 +145,7 @@ function checkAlert(forecast, alert) {
 // ── Email šablona ─────────────────────────────────────────────────────────
 
 function formatDate(dateStr) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
+  return new Date(dateStr).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
 }
 
 function buildEmail(spotName, windguruUrl, windows) {
@@ -210,11 +191,11 @@ function buildEmail(spotName, windguruUrl, windows) {
 
 // ── Handler ───────────────────────────────────────────────────────────────
 
-const CORS = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+const CORS = { "Content-Type": "application/json", "Access-Control-Allow-Origin": process.env.URL ?? "*" };
 
-exports.handler = async (event) => {
-  // Ověření tajného klíče
-  const secret = event.queryStringParameters?.secret;
+export const handler = async (event) => {
+  // Přijímáme secret z hlavičky (bezpečnější) nebo fallback z query stringu
+  const secret = event.headers?.["x-alert-secret"] ?? event.queryStringParameters?.secret;
   if (!secret || secret !== process.env.ALERT_SECRET) {
     return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: "unauthorized" }) };
   }
@@ -229,46 +210,38 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({
       error: "missing env vars",
       has_supabase_url: !!supabaseUrl,
-      has_service_key: !!serviceKey,
-      has_resend_key: !!resendKey,
+      has_service_key:  !!serviceKey,
+      has_resend_key:   !!resendKey,
     })};
   }
 
-  // 1. Načti aktivní alerty
   const alerts = await sbGet(
     `${supabaseUrl}/rest/v1/alerts?active=eq.true&select=id,user_email,spot_id,min_wind_ms,max_days_ahead,weekends_only,last_sent_at`,
     serviceKey
   );
-
   if (!alerts.length) {
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ sent: 0, message: "no active alerts" }) };
   }
 
-  // 2. Načti potřebné spoty
-  const spotIds = [...new Set(alerts.map(a => a.spot_id))];
+  // Spoty včetně směrů — potřeba pro kontrolu offshore
+  const spotIds   = [...new Set(alerts.map(a => a.spot_id))];
   const spotsData = await sbGet(
-    `${supabaseUrl}/rest/v1/spots?id=in.(${spotIds.map(id => `"${id}"`).join(",")})&select=id,name,lat,lon,windguru_url`,
+    `${supabaseUrl}/rest/v1/spots?id=in.(${spotIds.map(id => `"${id}"`).join(",")})&select=id,name,lat,lon,windguru_url,good_dirs,bad_dirs`,
     serviceKey
   );
   const spotMap = Object.fromEntries(spotsData.map(s => [s.id, s]));
 
-  // 3. Načti forecasty
-  const forecastMap = {};
-  const forecastErrors = {};
-  await Promise.all(spotIds.map(async (id) => {
+  const forecastMap = {}, forecastErrors = {};
+  await Promise.all(spotIds.map(async id => {
     const spot = spotMap[id];
-    if (!spot) { forecastErrors[id] = "spot not found in DB"; return; }
+    if (!spot) { forecastErrors[id] = "spot not found"; return; }
     try { forecastMap[id] = await getForecast(spot, supabaseUrl, serviceKey); }
     catch (e) { forecastErrors[id] = e.message; }
   }));
 
-  // 4. Zkontroluj podmínky + seskup emaily
-  const emailsToSend = {};
-  const alertsToMark = [];
-  const skipped = [];
+  const emailsToSend = {}, alertsToMark = [], skipped = [];
 
   for (const alert of alerts) {
-    // Neodesílat duplicitně (cooldown 20 hod) — v test režimu přeskočíme
     if (!testMode && alert.last_sent_at) {
       const age = Date.now() - new Date(alert.last_sent_at).getTime();
       if (age < 20 * 60 * 60 * 1000) { skipped.push({ id: alert.id, reason: "cooldown" }); continue; }
@@ -277,18 +250,17 @@ exports.handler = async (event) => {
     const forecast = forecastMap[alert.spot_id];
     if (!forecast) { skipped.push({ id: alert.id, reason: `no forecast: ${forecastErrors[alert.spot_id] ?? "unknown"}` }); continue; }
 
+    const spot = spotMap[alert.spot_id];
     const windows = testMode
       ? [{ date: new Date().toISOString().slice(0, 10), hours: 4, avgWind: alert.min_wind_ms + 1, maxGust: alert.min_wind_ms + 2 }]
-      : checkAlert(forecast, alert);
+      : checkAlert(forecast, alert, spot.good_dirs ?? [], spot.bad_dirs ?? []);
 
     if (!windows.length) { skipped.push({ id: alert.id, reason: "no matching wind window" }); continue; }
 
-    const spot = spotMap[alert.spot_id];
     if (!emailsToSend[alert.user_email]) emailsToSend[alert.user_email] = [];
     emailsToSend[alert.user_email].push({ spot, windows, alertId: alert.id });
   }
 
-  // 5. Odešli emaily
   let sent = 0;
   const emailErrors = [];
   for (const [email, items] of Object.entries(emailsToSend)) {
@@ -310,8 +282,7 @@ exports.handler = async (event) => {
           sent++;
           if (!testMode) alertsToMark.push(alertId);
         } else {
-          const body = await res.text();
-          emailErrors.push({ email, status: res.status, body });
+          emailErrors.push({ email, status: res.status, body: await res.text() });
         }
       } catch (e) {
         emailErrors.push({ email, error: e.message });
@@ -319,11 +290,8 @@ exports.handler = async (event) => {
     }
   }
 
-  // 6. Aktualizuj last_sent_at
   await Promise.all(alertsToMark.map(id =>
-    sbPatch(
-      `${supabaseUrl}/rest/v1/alerts?id=eq.${id}`,
-      serviceKey,
+    sbPatch(`${supabaseUrl}/rest/v1/alerts?id=eq.${id}`, serviceKey,
       { last_sent_at: new Date().toISOString() }
     ).catch(() => {})
   ));

@@ -40,22 +40,42 @@ create policy "public read approved spots"
   using (status = 'approved');
 
 -- ---- SEED: 5 ověřených spotů (import) ----
-insert into spots (id, name, country, lat, lon, note, windguru_url, status, trust)
+-- TODO: good_dirs/bad_dirs jsou přibližné (typické W/SW větry pro CZ).
+--       Ověř a oprav je v Supabase tabulce spots nebo přes admin EditSpotModal.
+--       Formát JSONB: [{"from":225,"to":315}] = odkud vítr vane (0=S, 90=V, 180=J, 270=Z).
+insert into spots (id, name, country, lat, lon, note, windguru_url, good_dirs, bad_dirs, status, trust)
 values
-  ('nechranice','Nechranice','CZ',50.388,13.27,'Největší a nejpopulárnější český spot.','https://www.windguru.cz/2','approved','verified_import'),
-  ('rozkos','Rozkoš','CZ',50.398,16.03,'Velká přehrada u České Skalice.','https://www.windguru.cz/4','approved','verified_import'),
-  ('labut','Labuť','CZ',49.453,13.97,'Rybník u Myštic (Blatensko).','https://www.windguru.cz/329646','approved','verified_import'),
-  ('stepansky','Štěpánský rybník','CZ',49.782,13.755,'U Mýta na Rokycansku (kousek od D5).','https://www.windguru.cz/111','approved','verified_import'),
-  ('berzdorfer','Berzdorfer See','DE',51.11,14.985,'U Görlitz, kousek za hranicemi.','https://www.windguru.cz/235437','approved','verified_import')
+  ('nechranice','Nechranice','CZ',50.388,13.27,
+   'Největší a nejpopulárnější český spot.','https://www.windguru.cz/2',
+   '[{"from":210,"to":320}]','[{"from":130,"to":210}]',
+   'approved','verified_import'),
+  ('rozkos','Rozkoš','CZ',50.398,16.03,
+   'Velká přehrada u České Skalice.','https://www.windguru.cz/4',
+   '[{"from":200,"to":315}]','[{"from":60,"to":160}]',
+   'approved','verified_import'),
+  ('labut','Labuť','CZ',49.453,13.97,
+   'Rybník u Myštic (Blatensko).','https://www.windguru.cz/329646',
+   '[{"from":200,"to":330}]',null,
+   'approved','verified_import'),
+  ('stepansky','Štěpánský rybník','CZ',49.782,13.755,
+   'U Mýta na Rokycansku (kousek od D5).','https://www.windguru.cz/111',
+   '[{"from":210,"to":330}]',null,
+   'approved','verified_import'),
+  ('berzdorfer','Berzdorfer See','DE',51.11,14.985,
+   'U Görlitz, kousek za hranicemi.','https://www.windguru.cz/235437',
+   '[{"from":220,"to":320}]','[{"from":60,"to":150}]',
+   'approved','verified_import')
 on conflict (id) do update set
-  name = excluded.name,
-  country = excluded.country,
-  lat = excluded.lat,
-  lon = excluded.lon,
-  note = excluded.note,
+  name        = excluded.name,
+  country     = excluded.country,
+  lat         = excluded.lat,
+  lon         = excluded.lon,
+  note        = excluded.note,
   windguru_url = excluded.windguru_url,
-  status = excluded.status,
-  trust = excluded.trust;
+  good_dirs   = excluded.good_dirs,
+  bad_dirs    = excluded.bad_dirs,
+  status      = excluded.status,
+  trust       = excluded.trust;
 
 -- =====================================================================
 --  Fáze 3b-B: oblíbené spoty (favorites) vázané na uživatele
@@ -219,3 +239,57 @@ create policy "user own alerts"
   on alerts for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- =====================================================================
+--  Fáze 0.4: admin přes roli v DB (ne hardcoded e-mail v kódu/bundlu)
+-- =====================================================================
+
+-- 1. Přidej is_admin do profiles
+alter table profiles add column if not exists is_admin boolean not null default false;
+
+-- 2. Security definer funkce — obejde RLS na profiles (jinak by vznikla rekurze).
+--    Vrací true pokud přihlášený uživatel má is_admin = true.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select is_admin from profiles where id = auth.uid()),
+    false
+  );
+$$;
+
+-- 3. Nahraď e-mailové politiky rolí (spots)
+drop policy if exists "admin read all spots" on spots;
+create policy "admin read all spots"
+  on spots for select
+  using (public.is_admin());
+
+drop policy if exists "admin update spots" on spots;
+create policy "admin update spots"
+  on spots for update
+  using (public.is_admin());
+
+drop policy if exists "admin delete spots" on spots;
+create policy "admin delete spots"
+  on spots for delete
+  using (public.is_admin());
+
+-- 4. Nahraď e-mailové politiky rolí (reports)
+drop policy if exists "admin read reports" on reports;
+create policy "admin read reports"
+  on reports for select
+  using (public.is_admin());
+
+drop policy if exists "admin update reports" on reports;
+create policy "admin update reports"
+  on reports for update
+  using (public.is_admin());
+
+-- 5. Nastav is_admin = true pro správce (jednorázově)
+update profiles
+set is_admin = true
+where id = (select id from auth.users where email = 'vasikpicasa@gmail.com');

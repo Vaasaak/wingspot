@@ -4,6 +4,8 @@ import type { LucideIcon } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { distanceKm } from "../lib/geo";
 import { MapPicker } from "./MapPicker";
+import { WindCompass, sectorsToDirRanges, defaultSectors } from "./WindCompass";
+import type { SectorState } from "./WindCompass";
 import type { Session } from "@supabase/supabase-js";
 import type { Spot, SpotFacilities } from "../data/spots";
 
@@ -41,9 +43,11 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const [wc, setWc] = useState<boolean | undefined>(undefined);
   const [refreshments, setRefreshments] = useState<boolean | undefined>(undefined);
   const [rental, setRental] = useState<boolean | undefined>(undefined);
+  const [windSectors, setWindSectors] = useState<SectorState[]>(defaultSectors);
 
   const gpsError = gpsText.trim().length > 3 && !coords;
-  const valid = name.trim().length >= 2 && !!coords;
+  const hasGoodDir = windSectors.some(s => s === "good");
+  const valid = name.trim().length >= 2 && !!coords && hasGoodDir;
 
   function handleMapChange(lat: number, lon: number) {
     setCoords({ lat, lon });
@@ -85,6 +89,10 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
       lon: coords!.lon,
       note: note.trim() || null,
       windguru_url: windguru.trim() || null,
+      good_dirs: sectorsToDirRanges(windSectors, "good"),
+      bad_dirs:  sectorsToDirRanges(windSectors, "bad").length > 0
+                   ? sectorsToDirRanges(windSectors, "bad")
+                   : null,
       facilities: Object.keys(facilities).length > 0 ? facilities : null,
       status: "pending",
       trust: "community",
@@ -156,7 +164,16 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 </div>
               )}
 
-              <label className="field-label" style={{ marginTop: 12 }}>
+              <label className="field-label" style={{ marginTop: 16 }}>
+                Směr větru * <span className="muted small">— od které strany fouká dobře?</span>
+              </label>
+              <p className="muted small" style={{ marginTop: 2, marginBottom: 4 }}>
+                Klikni na sektor: <b style={{ color: "#0ea5e9" }}>modrý</b> = vítr z té strany je vhodný (od vody),{" "}
+                <b style={{ color: "#ef4444" }}>červený</b> = offshore (nebezpečný). Alespoň jeden modrý je povinný.
+              </p>
+              <WindCompass value={windSectors} onChange={setWindSectors} />
+
+              <label className="field-label" style={{ marginTop: 16 }}>
                 Windguru odkaz <span className="muted small">(volitelné)</span>
               </label>
               <div style={{ display: "flex", gap: 6 }}>

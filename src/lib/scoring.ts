@@ -236,6 +236,8 @@ export function evaluateSpot(
       }
       // srážky
       q -= Math.min(RANK.precipMax, precipMm * RANK.precipPerMm);
+      // Bez ověřeného směru nevíme, jestli není offshore — mírná penalizace.
+      if (dirUnverified) q -= RANK.dirUnverifiedPenalty;
       const qualityScore = clamp01(q);
 
       return {

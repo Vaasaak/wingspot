@@ -12,7 +12,8 @@ jobs:
       - name: Trigger send-alerts function
         run: |
           STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            "https://wingspot.netlify.app/.netlify/functions/send-alerts?secret=${{ secrets.ALERT_SECRET }}")
+            -H "X-Alert-Secret: ${{ secrets.ALERT_SECRET }}" \
+            "https://wingspot.netlify.app/.netlify/functions/send-alerts")
           cat /tmp/response.json
           echo ""
           if [ "$STATUS" != "200" ]; then

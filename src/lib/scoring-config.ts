@@ -24,4 +24,8 @@ export const RANK = {
   // Vzdálenostní váha (wLength + wStrength + wConfidence = 1.0)
   distNearMul: 1.0,     // násobič skóre na blízku
   distFarMul: 0.6,      // násobič na hraně maxDistanceKm
+
+  // Penalizace za neověřený směr: spot bez good_dirs může být offshore, ale nevíme.
+  // Odečte se od qualityScore; 0 = žádná penalizace, 1 = vždy nula.
+  dirUnverifiedPenalty: 0.12,
 };

@@ -26,3 +26,13 @@ export async function saveFavoritesToDb(
     { onConflict: "id" }
   );
 }
+
+export async function loadIsAdminFromDb(userId: string): Promise<boolean> {
+  if (!supabaseEnabled || !supabase) return false;
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", userId)
+    .maybeSingle();
+  return (data as { is_admin?: boolean } | null)?.is_admin ?? false;
+}

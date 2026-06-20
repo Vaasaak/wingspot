@@ -28,10 +28,8 @@ import { AdminPanel } from "./components/AdminPanel";
 import { ReportModal } from "./components/ReportModal";
 import { AlertsModal } from "./components/AlertsModal";
 import { supabase, supabaseEnabled } from "./lib/supabase";
-import { loadFavoritesFromDb, saveFavoritesToDb } from "./lib/profile";
+import { loadFavoritesFromDb, saveFavoritesToDb, loadIsAdminFromDb } from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
-
-const ADMIN_EMAIL = "vasikpicasa@gmail.com";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
@@ -44,32 +42,37 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [showSettings, setShowSettings] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showAddSpot, setShowAddSpot] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [reportingSpot, setReportingSpot] = useState<import("./data/spots").Spot | null>(null);
 
-  const isAdmin = session?.user.email === ADMIN_EMAIL;
-
-  // sleduj přihlášení + při přihlášení načti oblíbené z DB
+  // sleduj přihlášení + při přihlášení načti oblíbené a admin roli z DB
   useEffect(() => {
     if (!supabaseEnabled || !supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       if (data.session?.user.id) {
-        loadFavoritesFromDb(data.session.user.id).then((dbFavs) => {
+        const uid = data.session.user.id;
+        loadFavoritesFromDb(uid).then((dbFavs) => {
           if (dbFavs !== null) setFavorites(dbFavs);
         });
+        loadIsAdminFromDb(uid).then(setIsAdmin);
       }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       setShowLogin(false);
       if (s?.user.id) {
-        loadFavoritesFromDb(s.user.id).then((dbFavs) => {
+        const uid = s.user.id;
+        loadFavoritesFromDb(uid).then((dbFavs) => {
           if (dbFavs !== null) setFavorites(dbFavs);
         });
+        loadIsAdminFromDb(uid).then(setIsAdmin);
+      } else {
+        setIsAdmin(false);
       }
     });
     return () => sub.subscription.unsubscribe();
