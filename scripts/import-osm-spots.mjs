@@ -13,7 +13,12 @@
 
 import { writeFileSync } from "fs";
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+// Více mirrorů — pokud jeden selže, zkusíme další
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
 
 const LAT_MIN = 27, LAT_MAX = 72;
 const LON_MIN = -19, LON_MAX = 42;
@@ -44,31 +49,49 @@ function buildQuery(s, w, n, e, tags) {
   return `[out:json][timeout:90];\n(\n  ${union}\n);\nout center;`;
 }
 
-async function queryTile(s, w, n, e, tags, retries = 3) {
+async function fetchWithTimeout(url, options, timeoutMs = 120000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function queryTile(s, w, n, e, tags) {
   const body = new URLSearchParams({ data: buildQuery(s, w, n, e, tags) }).toString();
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const res = await fetch(OVERPASS_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "WingSpot-OSM-Importer/2.0 (https://wingspot.netlify.app)",
-        },
-        body,
-      });
-      if (res.status === 429 || res.status === 504) {
-        await sleep(15000 * (attempt + 1));
-        continue;
+  const opts = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "WingSpot-OSM-Importer/2.0 (https://wingspot.netlify.app)",
+    },
+    body,
+  };
+
+  for (const mirror of OVERPASS_MIRRORS) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetchWithTimeout(mirror, opts, 120000);
+        if (res.status === 429 || res.status === 504) {
+          await sleep(20000 * (attempt + 1));
+          continue;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return data.elements ?? [];
+      } catch (e) {
+        const reason = e?.cause?.message ?? e.message;
+        if (attempt < 2) {
+          await sleep(10000 * (attempt + 1));
+        } else {
+          process.stdout.write(` [${mirror.includes("kumi") ? "kumi" : mirror.includes("mail") ? "mail.ru" : "de"} fail: ${reason}]`);
+        }
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      return data.elements ?? [];
-    } catch (e) {
-      if (attempt === retries - 1) throw e;
-      await sleep(8000 * (attempt + 1));
     }
   }
-  return [];
+  return []; // všechny mirrory selhaly, přeskočíme dlaždici
 }
 
 function elementToPoint(el) {
@@ -168,17 +191,18 @@ for (const [s, w, n, e] of tiles) {
       const pt = elementToPoint(el);
       if (pt) allPoints.push({ ...pt, name: el.tags?.name ?? null, osmId: String(el.id), trust: "community_confirmed" });
     }
-    await sleep(800);
+    await sleep(2000);
     const loEls = await queryTile(s, w, n, e, LOW_TRUST_TAGS);
     for (const el of loEls) {
       const pt = elementToPoint(el);
       if (pt) allPoints.push({ ...pt, name: el.tags?.name ?? null, osmId: String(el.id), trust: "community" });
     }
+    process.stdout.write(` +${hiEls.length + loEls.length}`);
   } catch (e) {
     console.warn(`\nChyba na dlaždici ${s},${w},${n},${e}: ${e.message}`);
   }
 
-  await sleep(1200); // rate-limit Overpass: ~40 req/min
+  await sleep(2500); // rate-limit Overpass
 }
 
 console.log(`\n\nCelkem prvků z OSM: ${allPoints.length}`);
