@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { SquareParking, Droplets, Coffee, Leaf, ShoppingBag, X } from "lucide-react";
 import type { Spot } from "../data/spots";
 import type { DayEval } from "../lib/scoring";
 import { fmtMs, fmtWindow } from "../lib/format";
 import { RATING_META, confidenceLabel } from "../lib/ui";
 import { HourlyChart } from "./HourlyChart";
 
-const PARKING_LABEL: Record<string, string> = { free: "🅿️ Zdarma", paid: "🅿️ Placené", none: "🚫 Parking" };
+function FacChip({ icon, label, off }: { icon: ReactNode; label: string; off?: boolean }) {
+  return (
+    <span className={"fac-chip" + (off ? " fac-no" : "")}>
+      {off ? <X size={11} /> : icon}
+      {label}
+    </span>
+  );
+}
 
 export function SpotRow({
   spot,
@@ -122,15 +130,15 @@ export function SpotRow({
             {/* Vybavenost */}
             {spot.facilities && (
               <div className="facilities-row">
-                {spot.facilities.parking && (
-                  <span className="fac-chip">{PARKING_LABEL[spot.facilities.parking]}</span>
-                )}
-                {spot.facilities.wc      === true  && <span className="fac-chip">🚻 WC</span>}
-                {spot.facilities.wc      === false && <span className="fac-chip fac-no">🚻 Bez WC</span>}
-                {spot.facilities.refreshments === true  && <span className="fac-chip">🍦 Občerstvení</span>}
-                {spot.facilities.refreshments === false && <span className="fac-chip fac-no">🍦 Bez občerstvení</span>}
-                {spot.facilities.shade   === true  && <span className="fac-chip">🌳 Stín</span>}
-                {spot.facilities.rental  === true  && <span className="fac-chip">🏄 Půjčovna</span>}
+                {spot.facilities.parking === "free"  && <FacChip icon={<SquareParking size={13}/>} label="Parking zdarma" />}
+                {spot.facilities.parking === "paid"  && <FacChip icon={<SquareParking size={13}/>} label="Parking placený" />}
+                {spot.facilities.parking === "none"  && <FacChip icon={<SquareParking size={13}/>} label="Bez parkingu" off />}
+                {spot.facilities.wc === true          && <FacChip icon={<Droplets size={13}/>} label="WC" />}
+                {spot.facilities.wc === false         && <FacChip icon={<Droplets size={13}/>} label="Bez WC" off />}
+                {spot.facilities.refreshments === true  && <FacChip icon={<Coffee size={13}/>} label="Občerstvení" />}
+                {spot.facilities.refreshments === false && <FacChip icon={<Coffee size={13}/>} label="Bez občerstvení" off />}
+                {spot.facilities.shade === true       && <FacChip icon={<Leaf size={13}/>} label="Stín" />}
+                {spot.facilities.rental === true      && <FacChip icon={<ShoppingBag size={13}/>} label="Půjčovna" />}
               </div>
             )}
 

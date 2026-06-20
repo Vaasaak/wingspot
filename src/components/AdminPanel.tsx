@@ -27,7 +27,7 @@ interface Report {
   message: string | null;
   status: string;
   created_at: string;
-  spots: { name: string } | null;
+  spots: { name: string }[] | null;
 }
 
 type Cluster = PendingSpot[];
@@ -260,7 +260,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
               reports.map((r) => (
                 <div key={r.id} className="pending-spot">
                   <div className="pending-spot-name">
-                    {r.spots?.name ?? r.spot_id}
+                    {r.spots?.[0]?.name ?? r.spot_id}
                     <span className="muted small"> · oprava</span>
                   </div>
                   {r.issues && (

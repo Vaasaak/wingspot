@@ -3,6 +3,9 @@
   command = "npm run build"
   publish = "dist"
 
+[functions]
+  directory = "netlify/functions"
+
 # Aby PWA fungovala správně, service worker se nemá kešovat
 [[headers]]
   for = "/sw.js"

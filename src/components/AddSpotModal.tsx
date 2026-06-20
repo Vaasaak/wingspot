@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { SquareParking, Droplets, Coffee, Leaf, ShoppingBag } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { distanceKm } from "../lib/geo";
+import { MapPicker } from "./MapPicker";
 import type { Session } from "@supabase/supabase-js";
 import type { Spot, SpotFacilities } from "../data/spots";
 
@@ -10,7 +12,6 @@ interface Props {
   onClose: () => void;
 }
 
-// Parses "lat, lon" pasted from Google Maps (handles Czech decimal commas too)
 function parseGps(raw: string): { lat: number; lon: number } | null {
   const s = raw.replace(/(\d),(\d)/g, "$1.$2").trim();
   const p = s.split(/[\s,]+/).filter(Boolean);
@@ -21,17 +22,33 @@ function parseGps(raw: string): { lat: number; lon: number } | null {
   return { lat, lon };
 }
 
+async function searchWindguru(name: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `/.netlify/functions/windguru-search?name=${encodeURIComponent(name)}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.stations?.[0]?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 type ParkingVal = "free" | "paid" | "none" | undefined;
 
 export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const [name, setName] = useState("");
   const [country, setCountry] = useState<"CZ" | "DE">("CZ");
-  const [gps, setGps] = useState("");
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [gpsText, setGpsText] = useState("");
   const [note, setNote] = useState("");
   const [windguru, setWindguru] = useState("");
+  const [wgSearching, setWgSearching] = useState(false);
+  const [wgFound, setWgFound] = useState(false);
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [msg, setMsg] = useState("");
-  const [nearbyWarning, setNearbyWarning] = useState<string | null>(null);
+  const [nearbySpot, setNearbySpot] = useState<string | null>(null);
   const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
   // Amenities
@@ -41,32 +58,45 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const [shade, setShade] = useState<boolean | undefined>(undefined);
   const [rental, setRental] = useState<boolean | undefined>(undefined);
 
-  const coords = gps.trim() ? parseGps(gps) : null;
-  const gpsError = gps.trim().length > 3 && !coords;
+  const gpsError = gpsText.trim().length > 3 && !coords;
   const valid = name.trim().length >= 2 && !!coords;
 
-  // Check for nearby existing spots when GPS changes
+  // When map is clicked
+  function handleMapClick(lat: number, lon: number) {
+    setCoords({ lat, lon });
+    setGpsText(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+  }
+
+  // When text input changes
+  function handleGpsText(val: string) {
+    setGpsText(val);
+    const parsed = parseGps(val);
+    if (parsed) setCoords(parsed);
+  }
+
+  // Duplicate check when coords change
   useEffect(() => {
-    if (!coords) { setNearbyWarning(null); setConfirmDuplicate(false); return; }
+    if (!coords) { setNearbySpot(null); setConfirmDuplicate(false); return; }
     const nearby = existingSpots
-      .map((s) => ({ spot: s, dist: distanceKm(coords.lat, coords.lon, s.lat, s.lon) }))
+      .map((s) => ({ name: s.name, dist: distanceKm(coords.lat, coords.lon, s.lat, s.lon) }))
       .filter((x) => x.dist < 5)
-      .sort((a, b) => a.dist - b.dist);
-    if (nearby.length > 0) {
-      const { spot, dist } = nearby[0];
-      setNearbyWarning(`Podobný spot v okolí: ${spot.name} (~${dist.toFixed(1)} km daleko)`);
-    } else {
-      setNearbyWarning(null);
-      setConfirmDuplicate(false);
-    }
-  }, [gps, existingSpots]); // eslint-disable-line react-hooks/exhaustive-deps
+      .sort((a, b) => a.dist - b.dist)[0];
+    setNearbySpot(nearby ? `${nearby.name} (~${nearby.dist.toFixed(1)} km)` : null);
+    if (!nearby) setConfirmDuplicate(false);
+  }, [coords]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-search Windguru when name is filled (debounced on blur)
+  async function handleNameBlur() {
+    if (!name.trim() || windguru || wgSearching) return;
+    setWgSearching(true);
+    const url = await searchWindguru(name.trim());
+    setWgSearching(false);
+    if (url) { setWindguru(url); setWgFound(true); }
+  }
 
   async function submit() {
     if (!supabase || !valid) return;
-    if (nearbyWarning && !confirmDuplicate) {
-      setConfirmDuplicate(true);
-      return;
-    }
+    if (nearbySpot && !confirmDuplicate) { setConfirmDuplicate(true); return; }
     setState("sending");
 
     const facilities: SpotFacilities = {};
@@ -88,12 +118,8 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
       trust: "community",
       created_by: session.user.id,
     });
-    if (error) {
-      setState("error");
-      setMsg(error.message);
-    } else {
-      setState("sent");
-    }
+    if (error) { setState("error"); setMsg(error.message); }
+    else setState("sent");
   }
 
   return (
@@ -107,7 +133,7 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
           {state === "sent" ? (
             <div className="login-sent">
               <div style={{ fontSize: "2rem" }}>✅</div>
-              <p>Díky! Spot byl odeslán ke schválení.<br />Zobrazí se po kontrole admina.</p>
+              <p>Díky! Spot odeslán ke schválení.<br />Zobrazí se po kontrole admina.</p>
               <button className="btn" onClick={onClose} style={{ marginTop: 14, width: "100%" }}>Zavřít</button>
             </div>
           ) : (
@@ -118,59 +144,83 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
 
               {/* Název */}
               <label className="field-label" style={{ marginTop: 14 }}>Název spotu *</label>
-              <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="např. Máchovo jezero" />
+              <input
+                className="text-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={handleNameBlur}
+                placeholder="např. Máchovo jezero"
+              />
 
               {/* Země */}
               <label className="field-label" style={{ marginTop: 12 }}>Země</label>
               <select className="text-input" value={country} onChange={(e) => setCountry(e.target.value as "CZ" | "DE")}>
-                <option value="CZ">🇨🇿 Česko</option>
-                <option value="DE">🇩🇪 Německo</option>
+                <option value="CZ">Česko</option>
+                <option value="DE">Německo</option>
               </select>
 
-              {/* GPS — single field */}
-              <label className="field-label" style={{ marginTop: 12 }}>GPS souřadnice *</label>
-              <p className="muted small" style={{ margin: "0 0 6px" }}>
-                Otevři{" "}
-                <a href="https://maps.google.com" target="_blank" rel="noreferrer">Google Maps</a>
-                , klikni na místo pravým tlačítkem → zkopíruj souřadnice a vlož sem.
-              </p>
+              {/* Mapa */}
+              <label className="field-label" style={{ marginTop: 12 }}>
+                Poloha * — <span className="muted">klikni na mapu</span>
+              </label>
+              <MapPicker lat={coords?.lat} lon={coords?.lon} onChange={handleMapClick} />
+
+              {/* Alternativně paste souřadnic */}
               <input
                 className={"text-input" + (gpsError ? " input-error" : "")}
-                value={gps}
-                onChange={(e) => setGps(e.target.value)}
-                placeholder="50.388, 13.270"
+                value={gpsText}
+                onChange={(e) => handleGpsText(e.target.value)}
+                placeholder="nebo vlož z Google Maps: 50.388, 13.270"
+                style={{ marginTop: 6 }}
               />
               {coords && <p className="gps-ok small">✓ {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}</p>}
-              {gpsError && <p className="warn-text small">Souřadnice nerozpoznány — zkopíruj je přímo z Google Maps (pravý klik → čísla nahoře).</p>}
+              {gpsError && <p className="warn-text small">Souřadnice nerozpoznány — zkopíruj z Google Maps (pravý klik → čísla).</p>}
 
               {/* Upozornění na duplikát */}
-              {nearbyWarning && (
+              {nearbySpot && (
                 <div className="duplicate-warning">
-                  <span>⚠ {nearbyWarning}</span>
-                  {confirmDuplicate
-                    ? <span className="muted small"> — OK, přidat stejně</span>
-                    : <span className="muted small"> — stiskni Odeslat znovu pro potvrzení</span>}
+                  ⚠ Podobný spot v okolí: <b>{nearbySpot}</b>
+                  {confirmDuplicate && <span className="muted"> — přidáš ho stejně?</span>}
                 </div>
               )}
 
-              {/* Poznámka */}
-              <label className="field-label" style={{ marginTop: 12 }}>Poznámka</label>
-              <input className="text-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Popis, přístup, parkování…" />
-
               {/* Windguru */}
               <label className="field-label" style={{ marginTop: 12 }}>
-                Odkaz na Windguru{" "}
-                <a href="https://www.windguru.cz/" target="_blank" rel="noreferrer" className="field-hint">
-                  (najdi station →)
-                </a>
+                Windguru odkaz
+                {wgSearching && <span className="muted small"> · hledám…</span>}
+                {wgFound && <span className="gps-ok small"> · nalezeno</span>}
               </label>
-              <input className="text-input" value={windguru} onChange={(e) => setWindguru(e.target.value)} placeholder="https://www.windguru.cz/XXXXX (volitelné)" />
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  className="text-input"
+                  value={windguru}
+                  onChange={(e) => { setWindguru(e.target.value); setWgFound(false); }}
+                  placeholder="https://www.windguru.cz/XXXXX (volitelné)"
+                  style={{ flex: 1 }}
+                />
+                {coords && (
+                  <a
+                    href={`https://www.windguru.cz/map/#zoom=12&lat=${coords.lat}&lng=${coords.lon}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="windguru-link"
+                    style={{ marginTop: 0, padding: "9px 10px", whiteSpace: "nowrap" }}
+                    title="Otevři Windguru mapu na tomto místě"
+                  >
+                    🗺
+                  </a>
+                )}
+              </div>
+
+              {/* Poznámka */}
+              <label className="field-label" style={{ marginTop: 12 }}>Poznámka</label>
+              <input className="text-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Přístup, parkování, okolí…" />
 
               {/* Vybavenost */}
               <label className="field-label" style={{ marginTop: 16 }}>Vybavenost (volitelné)</label>
               <div className="facilities-form">
                 <div className="fac-row">
-                  <span className="fac-label">🅿️ Parkoviště</span>
+                  <span className="fac-label"><SquareParking size={15} /> Parkoviště</span>
                   <div className="fac-chips">
                     {(["free", "paid", "none"] as ParkingVal[]).map((v) => (
                       <button key={v} type="button"
@@ -184,14 +234,14 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 </div>
                 {(
                   [
-                    { key: "wc",           icon: "🚻", label: "WC",           val: wc,           set: setWc },
-                    { key: "refreshments", icon: "🍦", label: "Občerstvení",  val: refreshments, set: setRefreshments },
-                    { key: "shade",        icon: "🌳", label: "Stín",         val: shade,        set: setShade },
-                    { key: "rental",       icon: "🏄", label: "Půjčovna",     val: rental,       set: setRental },
-                  ] as { key: string; icon: string; label: string; val: boolean | undefined; set: (v: boolean | undefined) => void }[]
-                ).map(({ key, icon, label, val, set }) => (
+                    { key: "wc",           Icon: Droplets,     label: "WC",          val: wc,           set: setWc },
+                    { key: "refreshments", Icon: Coffee,        label: "Občerstvení", val: refreshments, set: setRefreshments },
+                    { key: "shade",        Icon: Leaf,          label: "Stín",        val: shade,        set: setShade },
+                    { key: "rental",       Icon: ShoppingBag,   label: "Půjčovna",    val: rental,       set: setRental },
+                  ] as { key: string; Icon: React.FC<{size:number}>; label: string; val: boolean | undefined; set: (v: boolean | undefined) => void }[]
+                ).map(({ key, Icon, label, val, set }) => (
                   <div key={key} className="fac-row">
-                    <span className="fac-label">{icon} {label}</span>
+                    <span className="fac-label"><Icon size={15} /> {label}</span>
                     <div className="fac-chips">
                       <button type="button" className={"chip" + (val === true  ? " active" : "")} onClick={() => set(val === true  ? undefined : true)}>Ano</button>
                       <button type="button" className={"chip" + (val === false ? " active" : "")} onClick={() => set(val === false ? undefined : false)}>Není</button>
@@ -209,7 +259,7 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 style={{ marginTop: 18, width: "100%" }}
               >
                 {state === "sending" ? "Odesílám…"
-                  : nearbyWarning && !confirmDuplicate ? "Přidat i přesto"
+                  : nearbySpot && !confirmDuplicate ? "Přidat i přesto ↵"
                   : "Odeslat ke schválení"}
               </button>
             </>

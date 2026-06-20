@@ -752,6 +752,23 @@
   border-color: #b91c1c;
 }
 
+/* ---------- LEAFLET MAPA ---------- */
+.map-picker { cursor: crosshair !important; }
+.map-picker .leaflet-interactive { cursor: crosshair !important; }
+/* custom pin */
+.map-pin {
+  width: 18px;
+  height: 18px;
+  background: var(--accent, #00e5ff);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+}
+/* override Leaflet attribution text size */
+.leaflet-control-attribution {
+  font-size: 9px !important;
+}
+
 /* GPS feedback */
 .gps-ok  { color: var(--good); margin: 4px 0 0; }
 .input-error { outline: 2px solid #f87171 !important; }
