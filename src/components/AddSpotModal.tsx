@@ -23,21 +23,6 @@ function parseGps(raw: string): { lat: number; lon: number } | null {
   return { lat, lon };
 }
 
-interface WgResult { url: string; name: string; }
-
-async function findWindguru(lat: number, lon: number): Promise<WgResult | null> {
-  try {
-    const res = await fetch(`/.netlify/functions/windguru-search?lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const s = data.stations?.[0];
-    if (!s?.url) return null;
-    return { url: s.url, name: s.name };
-  } catch {
-    return null;
-  }
-}
-
 type ParkingVal = "free" | "paid" | "none" | undefined;
 
 export function AddSpotModal({ session, existingSpots, onClose }: Props) {
@@ -47,8 +32,6 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const [gpsText, setGpsText] = useState("");
   const [note, setNote] = useState("");
   const [windguru, setWindguru] = useState("");
-  const [wgSearching, setWgSearching] = useState(false);
-  const [wgSuggestion, setWgSuggestion] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [msg, setMsg] = useState("");
   const [nearbySpot, setNearbySpot] = useState<string | null>(null);
@@ -62,36 +45,17 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const gpsError = gpsText.trim().length > 3 && !coords;
   const valid = name.trim().length >= 2 && !!coords;
 
-  // Klik na mapu → nastav souřadnice + hledej Windguru
   function handleMapChange(lat: number, lon: number) {
     setCoords({ lat, lon });
     setGpsText(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-    triggerWindguruSearch(lat, lon);
   }
 
-  // Paste souřadnic → synchronizuj s mapou
   function handleGpsText(val: string) {
     setGpsText(val);
     const parsed = parseGps(val);
-    if (parsed) {
-      setCoords(parsed);
-      triggerWindguruSearch(parsed.lat, parsed.lon);
-    }
+    if (parsed) setCoords(parsed);
   }
 
-  async function triggerWindguruSearch(lat: number, lon: number) {
-    if (wgSearching) return;
-    setWgSearching(true);
-    setWgSuggestion(null);
-    const result = await findWindguru(lat, lon);
-    setWgSearching(false);
-    if (result) {
-      if (!windguru) setWindguru(result.url);
-      if (result.name) setWgSuggestion(result.name);
-    }
-  }
-
-  // Detekce duplikátů
   useEffect(() => {
     if (!coords) { setNearbySpot(null); setConfirmDuplicate(false); return; }
     const nearby = existingSpots
@@ -130,9 +94,9 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   }
 
   const FAC_ROWS: { key: string; Icon: LucideIcon; label: string; val: boolean | undefined; set: (v: boolean | undefined) => void }[] = [
-    { key: "wc",           Icon: Droplets,  label: "WC",          val: wc,           set: setWc },
-    { key: "refreshments", Icon: Utensils,  label: "Občerstvení", val: refreshments, set: setRefreshments },
-    { key: "rental",       Icon: Store,     label: "Půjčovna",    val: rental,       set: setRental },
+    { key: "wc",           Icon: Droplets, label: "WC",          val: wc,           set: setWc },
+    { key: "refreshments", Icon: Utensils, label: "Občerstvení", val: refreshments, set: setRefreshments },
+    { key: "rental",       Icon: Store,    label: "Půjčovna",    val: rental,       set: setRental },
   ];
 
   return (
@@ -155,7 +119,6 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 Nový spot se zobrazí po schválení. Odesíláš jako <b>{session.user.email}</b>.
               </p>
 
-              {/* Název */}
               <label className="field-label" style={{ marginTop: 14 }}>Název spotu *</label>
               <input
                 className="text-input"
@@ -163,31 +126,18 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="např. Máchovo jezero"
               />
-              {/* Návrh názvu z Windguru */}
-              {wgSuggestion && wgSuggestion !== name && (
-                <div className="wg-suggestion">
-                  <span className="muted small">Windguru zná jako:</span>
-                  <b> {wgSuggestion}</b>
-                  <button type="button" className="chip" style={{ marginLeft: 8 }} onClick={() => setName(wgSuggestion)}>
-                    Použít
-                  </button>
-                </div>
-              )}
 
-              {/* Země */}
               <label className="field-label" style={{ marginTop: 12 }}>Země</label>
               <select className="text-input" value={country} onChange={(e) => setCountry(e.target.value as "CZ" | "DE")}>
                 <option value="CZ">Česko</option>
                 <option value="DE">Německo</option>
               </select>
 
-              {/* Mapa se vyhledáváním */}
               <label className="field-label" style={{ marginTop: 12 }}>
                 Poloha * — <span className="muted">najdi místo nebo klikni na mapu</span>
               </label>
               <MapPicker lat={coords?.lat} lon={coords?.lon} onChange={handleMapChange} />
 
-              {/* Alternativně paste */}
               <input
                 className={"text-input" + (gpsError ? " input-error" : "")}
                 value={gpsText}
@@ -205,18 +155,15 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 </div>
               )}
 
-              {/* Windguru */}
               <label className="field-label" style={{ marginTop: 12 }}>
-                Windguru odkaz
-                {wgSearching && <span className="muted small"> · hledám…</span>}
-                {!wgSearching && windguru && <span className="gps-ok small"> · nalezeno</span>}
+                Windguru odkaz <span className="muted small">(volitelné)</span>
               </label>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
                   className="text-input"
                   value={windguru}
                   onChange={(e) => setWindguru(e.target.value)}
-                  placeholder="https://www.windguru.cz/XXXXX (volitelné)"
+                  placeholder="https://www.windguru.cz/XXXXX"
                   style={{ flex: 1 }}
                 />
                 {coords && (
@@ -225,16 +172,19 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                     target="_blank" rel="noreferrer"
                     className="windguru-link"
                     style={{ marginTop: 0, padding: "9px 10px", whiteSpace: "nowrap" }}
-                    title="Otevři Windguru mapu na tomto místě"
+                    title="Najít spot na Windguru mapě"
                   >🗺</a>
                 )}
               </div>
+              {coords && !windguru && (
+                <p className="muted small" style={{ marginTop: 4 }}>
+                  Klikni 🗺 pro Windguru mapu v okolí — URL pak vlož sem.
+                </p>
+              )}
 
-              {/* Poznámka */}
               <label className="field-label" style={{ marginTop: 12 }}>Poznámka</label>
               <input className="text-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Přístup, parkování, okolí…" />
 
-              {/* Vybavenost */}
               <label className="field-label" style={{ marginTop: 16 }}>Vybavenost (volitelné)</label>
               <div className="facilities-form">
                 <div className="fac-row">
