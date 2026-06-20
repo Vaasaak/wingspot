@@ -801,6 +801,9 @@
   flex-wrap: wrap;
 }
 .fac-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-width: 110px;
   font-size: 0.9rem;
 }
@@ -818,6 +821,9 @@
   margin-top: 8px;
 }
 .fac-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.78rem;
   background: var(--card-2);
   border: 1px solid var(--line);
@@ -828,6 +834,31 @@
 .fac-chip.fac-no {
   opacity: 0.55;
   text-decoration: line-through;
+}
+
+/* Vyhledávání v MapPicker */
+.map-search-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 0;
+}
+.map-search-row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Návrh názvu z Windguru */
+.wg-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.85rem;
 }
 
 /* Tlačítko Nahlásit */

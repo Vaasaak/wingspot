@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { SquareParking, Droplets, Coffee, Leaf, ShoppingBag } from "lucide-react";
+import { SquareParking, Droplets, Utensils, Store } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { distanceKm } from "../lib/geo";
 import { MapPicker } from "./MapPicker";
@@ -22,14 +23,16 @@ function parseGps(raw: string): { lat: number; lon: number } | null {
   return { lat, lon };
 }
 
-async function searchWindguru(name: string): Promise<string | null> {
+interface WgResult { url: string; name: string; }
+
+async function findWindguru(lat: number, lon: number): Promise<WgResult | null> {
   try {
-    const res = await fetch(
-      `/.netlify/functions/windguru-search?name=${encodeURIComponent(name)}`
-    );
+    const res = await fetch(`/.netlify/functions/windguru-search?lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`);
     if (!res.ok) return null;
     const data = await res.json();
-    return data.stations?.[0]?.url ?? null;
+    const s = data.stations?.[0];
+    if (!s?.url) return null;
+    return { url: s.url, name: s.name };
   } catch {
     return null;
   }
@@ -45,36 +48,50 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const [note, setNote] = useState("");
   const [windguru, setWindguru] = useState("");
   const [wgSearching, setWgSearching] = useState(false);
-  const [wgFound, setWgFound] = useState(false);
+  const [wgSuggestion, setWgSuggestion] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [msg, setMsg] = useState("");
   const [nearbySpot, setNearbySpot] = useState<string | null>(null);
   const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
-  // Amenities
   const [parking, setParking] = useState<ParkingVal>(undefined);
   const [wc, setWc] = useState<boolean | undefined>(undefined);
   const [refreshments, setRefreshments] = useState<boolean | undefined>(undefined);
-  const [shade, setShade] = useState<boolean | undefined>(undefined);
   const [rental, setRental] = useState<boolean | undefined>(undefined);
 
   const gpsError = gpsText.trim().length > 3 && !coords;
   const valid = name.trim().length >= 2 && !!coords;
 
-  // When map is clicked
-  function handleMapClick(lat: number, lon: number) {
+  // Klik na mapu → nastav souřadnice + hledej Windguru
+  function handleMapChange(lat: number, lon: number) {
     setCoords({ lat, lon });
     setGpsText(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+    triggerWindguruSearch(lat, lon);
   }
 
-  // When text input changes
+  // Paste souřadnic → synchronizuj s mapou
   function handleGpsText(val: string) {
     setGpsText(val);
     const parsed = parseGps(val);
-    if (parsed) setCoords(parsed);
+    if (parsed) {
+      setCoords(parsed);
+      triggerWindguruSearch(parsed.lat, parsed.lon);
+    }
   }
 
-  // Duplicate check when coords change
+  async function triggerWindguruSearch(lat: number, lon: number) {
+    if (wgSearching) return;
+    setWgSearching(true);
+    setWgSuggestion(null);
+    const result = await findWindguru(lat, lon);
+    setWgSearching(false);
+    if (result) {
+      if (!windguru) setWindguru(result.url);
+      if (result.name) setWgSuggestion(result.name);
+    }
+  }
+
+  // Detekce duplikátů
   useEffect(() => {
     if (!coords) { setNearbySpot(null); setConfirmDuplicate(false); return; }
     const nearby = existingSpots
@@ -85,15 +102,6 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
     if (!nearby) setConfirmDuplicate(false);
   }, [coords]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-search Windguru when name is filled (debounced on blur)
-  async function handleNameBlur() {
-    if (!name.trim() || windguru || wgSearching) return;
-    setWgSearching(true);
-    const url = await searchWindguru(name.trim());
-    setWgSearching(false);
-    if (url) { setWindguru(url); setWgFound(true); }
-  }
-
   async function submit() {
     if (!supabase || !valid) return;
     if (nearbySpot && !confirmDuplicate) { setConfirmDuplicate(true); return; }
@@ -103,7 +111,6 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
     if (parking !== undefined) facilities.parking = parking;
     if (wc !== undefined) facilities.wc = wc;
     if (refreshments !== undefined) facilities.refreshments = refreshments;
-    if (shade !== undefined) facilities.shade = shade;
     if (rental !== undefined) facilities.rental = rental;
 
     const { error } = await supabase.from("spots").insert({
@@ -121,6 +128,12 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
     if (error) { setState("error"); setMsg(error.message); }
     else setState("sent");
   }
+
+  const FAC_ROWS: { key: string; Icon: LucideIcon; label: string; val: boolean | undefined; set: (v: boolean | undefined) => void }[] = [
+    { key: "wc",           Icon: Droplets,  label: "WC",          val: wc,           set: setWc },
+    { key: "refreshments", Icon: Utensils,  label: "Občerstvení", val: refreshments, set: setRefreshments },
+    { key: "rental",       Icon: Store,     label: "Půjčovna",    val: rental,       set: setRental },
+  ];
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -148,9 +161,18 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 className="text-input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                onBlur={handleNameBlur}
                 placeholder="např. Máchovo jezero"
               />
+              {/* Návrh názvu z Windguru */}
+              {wgSuggestion && wgSuggestion !== name && (
+                <div className="wg-suggestion">
+                  <span className="muted small">Windguru zná jako:</span>
+                  <b> {wgSuggestion}</b>
+                  <button type="button" className="chip" style={{ marginLeft: 8 }} onClick={() => setName(wgSuggestion)}>
+                    Použít
+                  </button>
+                </div>
+              )}
 
               {/* Země */}
               <label className="field-label" style={{ marginTop: 12 }}>Země</label>
@@ -159,13 +181,13 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 <option value="DE">Německo</option>
               </select>
 
-              {/* Mapa */}
+              {/* Mapa se vyhledáváním */}
               <label className="field-label" style={{ marginTop: 12 }}>
-                Poloha * — <span className="muted">klikni na mapu</span>
+                Poloha * — <span className="muted">najdi místo nebo klikni na mapu</span>
               </label>
-              <MapPicker lat={coords?.lat} lon={coords?.lon} onChange={handleMapClick} />
+              <MapPicker lat={coords?.lat} lon={coords?.lon} onChange={handleMapChange} />
 
-              {/* Alternativně paste souřadnic */}
+              {/* Alternativně paste */}
               <input
                 className={"text-input" + (gpsError ? " input-error" : "")}
                 value={gpsText}
@@ -174,9 +196,8 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 style={{ marginTop: 6 }}
               />
               {coords && <p className="gps-ok small">✓ {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}</p>}
-              {gpsError && <p className="warn-text small">Souřadnice nerozpoznány — zkopíruj z Google Maps (pravý klik → čísla).</p>}
+              {gpsError && <p className="warn-text small">Souřadnice nerozpoznány.</p>}
 
-              {/* Upozornění na duplikát */}
               {nearbySpot && (
                 <div className="duplicate-warning">
                   ⚠ Podobný spot v okolí: <b>{nearbySpot}</b>
@@ -188,27 +209,24 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
               <label className="field-label" style={{ marginTop: 12 }}>
                 Windguru odkaz
                 {wgSearching && <span className="muted small"> · hledám…</span>}
-                {wgFound && <span className="gps-ok small"> · nalezeno</span>}
+                {!wgSearching && windguru && <span className="gps-ok small"> · nalezeno</span>}
               </label>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
                   className="text-input"
                   value={windguru}
-                  onChange={(e) => { setWindguru(e.target.value); setWgFound(false); }}
+                  onChange={(e) => setWindguru(e.target.value)}
                   placeholder="https://www.windguru.cz/XXXXX (volitelné)"
                   style={{ flex: 1 }}
                 />
                 {coords && (
                   <a
                     href={`https://www.windguru.cz/map/#zoom=12&lat=${coords.lat}&lng=${coords.lon}`}
-                    target="_blank"
-                    rel="noreferrer"
+                    target="_blank" rel="noreferrer"
                     className="windguru-link"
                     style={{ marginTop: 0, padding: "9px 10px", whiteSpace: "nowrap" }}
                     title="Otevři Windguru mapu na tomto místě"
-                  >
-                    🗺
-                  </a>
+                  >🗺</a>
                 )}
               </div>
 
@@ -226,20 +244,11 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                       <button key={v} type="button"
                         className={"chip" + (parking === v ? " active" : "")}
                         onClick={() => setParking(parking === v ? undefined : v)}
-                      >
-                        {v === "free" ? "Zdarma" : v === "paid" ? "Placené" : "Není"}
-                      </button>
+                      >{v === "free" ? "Zdarma" : v === "paid" ? "Placené" : "Není"}</button>
                     ))}
                   </div>
                 </div>
-                {(
-                  [
-                    { key: "wc",           Icon: Droplets,     label: "WC",          val: wc,           set: setWc },
-                    { key: "refreshments", Icon: Coffee,        label: "Občerstvení", val: refreshments, set: setRefreshments },
-                    { key: "shade",        Icon: Leaf,          label: "Stín",        val: shade,        set: setShade },
-                    { key: "rental",       Icon: ShoppingBag,   label: "Půjčovna",    val: rental,       set: setRental },
-                  ] as { key: string; Icon: React.FC<{size:number}>; label: string; val: boolean | undefined; set: (v: boolean | undefined) => void }[]
-                ).map(({ key, Icon, label, val, set }) => (
+                {FAC_ROWS.map(({ key, Icon, label, val, set }) => (
                   <div key={key} className="fac-row">
                     <span className="fac-label"><Icon size={15} /> {label}</span>
                     <div className="fac-chips">

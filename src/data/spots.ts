@@ -22,7 +22,6 @@ export interface SpotFacilities {
   parking?: "free" | "paid" | "none";
   wc?: boolean;
   refreshments?: boolean;
-  shade?: boolean;
   rental?: boolean;
 }
 

@@ -168,3 +168,9 @@ drop policy if exists "admin update reports" on reports;
 create policy "admin update reports"
   on reports for update
   using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');
+
+-- admin může mazat spoty
+drop policy if exists "admin delete spots" on spots;
+create policy "admin delete spots"
+  on spots for delete
+  using (auth.jwt() ->> 'email' = 'vasikpicasa@gmail.com');

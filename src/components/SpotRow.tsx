@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { SquareParking, Droplets, Coffee, Leaf, ShoppingBag, X } from "lucide-react";
+import { SquareParking, Droplets, Utensils, Store, X } from "lucide-react";
 import type { Spot } from "../data/spots";
 import type { DayEval } from "../lib/scoring";
 import { fmtMs, fmtWindow } from "../lib/format";
@@ -135,10 +135,9 @@ export function SpotRow({
                 {spot.facilities.parking === "none"  && <FacChip icon={<SquareParking size={13}/>} label="Bez parkingu" off />}
                 {spot.facilities.wc === true          && <FacChip icon={<Droplets size={13}/>} label="WC" />}
                 {spot.facilities.wc === false         && <FacChip icon={<Droplets size={13}/>} label="Bez WC" off />}
-                {spot.facilities.refreshments === true  && <FacChip icon={<Coffee size={13}/>} label="Občerstvení" />}
-                {spot.facilities.refreshments === false && <FacChip icon={<Coffee size={13}/>} label="Bez občerstvení" off />}
-                {spot.facilities.shade === true       && <FacChip icon={<Leaf size={13}/>} label="Stín" />}
-                {spot.facilities.rental === true      && <FacChip icon={<ShoppingBag size={13}/>} label="Půjčovna" />}
+                {spot.facilities.refreshments === true  && <FacChip icon={<Utensils size={13}/>} label="Občerstvení" />}
+                {spot.facilities.refreshments === false && <FacChip icon={<Utensils size={13}/>} label="Bez občerstvení" off />}
+                {spot.facilities.rental === true      && <FacChip icon={<Store size={13}/>} label="Půjčovna" />}
               </div>
             )}
 

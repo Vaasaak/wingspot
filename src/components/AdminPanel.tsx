@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { distanceKm } from "../lib/geo";
+import { EditSpotModal, type AdminSpot } from "./EditSpotModal";
 
 interface PendingSpot {
   id: string;
@@ -61,15 +62,17 @@ interface Props {
 }
 
 export function AdminPanel({ onClose, onApproved }: Props) {
-  const [tab, setTab] = useState<"spots" | "reports">("spots");
+  const [tab, setTab] = useState<"spots" | "reports" | "manage">("spots");
   const [spots, setSpots] = useState<PendingSpot[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [allSpots, setAllSpots] = useState<AdminSpot[]>([]);
+  const [editingSpot, setEditingSpot] = useState<AdminSpot | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
     if (!supabase) return;
     setLoading(true);
-    const [{ data: sd }, { data: rd }] = await Promise.all([
+    const [{ data: sd }, { data: rd }, { data: ad }] = await Promise.all([
       supabase
         .from("spots")
         .select("id,name,country,lat,lon,note,windguru_url,created_at")
@@ -80,6 +83,10 @@ export function AdminPanel({ onClose, onApproved }: Props) {
         .select("id,spot_id,kind,issues,suggested_name,suggested_lat,suggested_lon,suggested_windguru_url,message,status,created_at,spots(name)")
         .eq("status", "pending")
         .order("created_at", { ascending: true }),
+      supabase
+        .from("spots")
+        .select("id,name,country,lat,lon,note,windguru_url,status,facilities")
+        .order("name", { ascending: true }),
     ]);
     setSpots(
       ((sd ?? []) as Omit<PendingSpot, "_windguru">[]).map((s) => ({
@@ -88,6 +95,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
       }))
     );
     setReports((rd ?? []) as Report[]);
+    setAllSpots((ad ?? []) as AdminSpot[]);
     setLoading(false);
   }
 
@@ -155,6 +163,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
   const clusters = cluster(spots);
 
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal admin-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -165,16 +174,41 @@ export function AdminPanel({ onClose, onApproved }: Props) {
         {/* Záložky */}
         <div className="admin-tabs">
           <button className={"admin-tab" + (tab === "spots" ? " active" : "")} onClick={() => setTab("spots")}>
-            Spoty ke schválení {spots.length > 0 && <span className="tab-badge">{spots.length}</span>}
+            Ke schválení {spots.length > 0 && <span className="tab-badge">{spots.length}</span>}
           </button>
           <button className={"admin-tab" + (tab === "reports" ? " active" : "")} onClick={() => setTab("reports")}>
             Hlášení {reports.length > 0 && <span className="tab-badge">{reports.length}</span>}
+          </button>
+          <button className={"admin-tab" + (tab === "manage" ? " active" : "")} onClick={() => setTab("manage")}>
+            Správa spotů
           </button>
         </div>
 
         <div className="modal-body" style={{ paddingTop: 12 }}>
           {loading ? (
             <p className="muted">Načítám…</p>
+          ) : tab === "manage" ? (
+            allSpots.length === 0 ? (
+              <p className="muted">Žádné spoty</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {allSpots.map((s) => (
+                  <div key={s.id} className="pending-spot" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="pending-spot-name" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {s.name}
+                        <span className="muted small">({s.country})</span>
+                        <span className={"chip small" + (s.status === "approved" ? " active" : "")} style={{ fontSize: "0.72rem", padding: "1px 8px" }}>
+                          {s.status}
+                        </span>
+                      </div>
+                      <div className="muted small">{s.lat.toFixed(4)}, {s.lon.toFixed(4)}</div>
+                    </div>
+                    <button className="btn small" onClick={() => setEditingSpot(s)}>✏️ Upravit</button>
+                  </div>
+                ))}
+              </div>
+            )
           ) : tab === "spots" ? (
             clusters.length === 0 ? (
               <p className="muted">Žádné čekající spoty 🎉</p>
@@ -294,5 +328,15 @@ export function AdminPanel({ onClose, onApproved }: Props) {
         </div>
       </div>
     </div>
+
+    {editingSpot && (
+      <EditSpotModal
+        spot={editingSpot}
+        onClose={() => setEditingSpot(null)}
+        onSaved={() => { load(); onApproved(); }}
+        onDeleted={() => { load(); onApproved(); }}
+      />
+    )}
+    </>
   );
 }
