@@ -63,6 +63,11 @@ export const handler = async (event) => {
           }
           if (age < CACHE_STALE_MS) {
             // Vrátíme zastaralá data okamžitě — warm-cache cron to obnoví do hodiny.
+            fetch(`${supabaseUrl}/rest/v1/spots?id=eq.${encodeURIComponent(spotId)}`, {
+              method: "PATCH",
+              headers: { ...sbHeaders(serviceKey), Prefer: "return=minimal" },
+              body: JSON.stringify({ last_viewed_at: new Date().toISOString() }),
+            }).catch(() => {});
             return {
               statusCode: 200,
               headers: { ...CORS, "X-Cache": "STALE", "Cache-Control": "public, max-age=60" },
@@ -86,12 +91,18 @@ export const handler = async (event) => {
     const [det, ens] = await Promise.all([fetchJson(detUrl), fetchJson(ensUrl)]);
     const forecast = processForecast(spotId, det[0] ?? {}, ens[0] ?? {});
 
-    // ── 3. Ulož do cache (fire-and-forget) ────────────────────────────────
+    // ── 3. Ulož do cache + aktualizuj last_viewed_at (fire-and-forget) ──────
     if (cacheEnabled) {
+      const now = new Date().toISOString();
       fetch(`${supabaseUrl}/rest/v1/forecast_cache`, {
         method: "POST",
         headers: { ...sbHeaders(serviceKey), Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify({ cache_key: spotId, data: forecast, fetched_at: new Date().toISOString() }),
+        body: JSON.stringify({ cache_key: spotId, data: forecast, fetched_at: now }),
+      }).catch(() => {});
+      fetch(`${supabaseUrl}/rest/v1/spots?id=eq.${encodeURIComponent(spotId)}`, {
+        method: "PATCH",
+        headers: { ...sbHeaders(serviceKey), Prefer: "return=minimal" },
+        body: JSON.stringify({ last_viewed_at: now }),
       }).catch(() => {});
     }
 

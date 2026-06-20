@@ -373,3 +373,25 @@ create policy "anyone can report"
       0
     ) < 5
   );
+
+-- =====================================================================
+--  Fáze A/B/C: škálování — last_viewed_at, OSM source/osm_id
+-- =====================================================================
+
+-- last_viewed_at: forecast.js ho aktualizuje při každém zobrazení spotu.
+-- warm-cache pak předehřívá jen tyto spoty → náklady ∝ reálné používání.
+alter table spots add column if not exists last_viewed_at timestamptz;
+
+-- source + osm_id: pro idempotentní OSM import (upsert podle source+osm_id).
+alter table spots add column if not exists source text;
+alter table spots add column if not exists osm_id text;
+
+-- Unikátní index pro opakovatelný import (on conflict (source, osm_id))
+create unique index if not exists spots_source_osm_id_idx
+  on spots (source, osm_id)
+  where source is not null and osm_id is not null;
+
+-- Index pro warm-cache dotaz (last_viewed_at > now() - 7 days)
+create index if not exists spots_last_viewed_idx
+  on spots (last_viewed_at)
+  where status = 'approved';

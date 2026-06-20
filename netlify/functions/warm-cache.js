@@ -1,6 +1,6 @@
-// Naplánovaná funkce: každou hodinu předehřeje forecast_cache pro všechny
-// aktivní schválené spoty. Zabrání tomu, aby první uživatel po hodině
-// čekal na synchronní Open-Meteo fetch.
+// Naplánovaná funkce: každou hodinu předehřeje forecast_cache jen pro spoty
+// zobrazené v posledních 7 dnech. Náklady rostou s reálným používáním, ne
+// s velikostí databáze.
 //
 // Plán: netlify.toml → [functions."warm-cache"] schedule = "@hourly"
 
@@ -67,9 +67,10 @@ export const handler = async () => {
     return { statusCode: 500, body: JSON.stringify({ error: "missing env vars" }) };
   }
 
-  // Načti všechny schválené spoty
+  // Načti jen spoty zobrazené za posledních 7 dní (lazy — náklady ∝ používání)
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const spotsRes = await fetch(
-    `${supabaseUrl}/rest/v1/spots?status=eq.approved&select=id,lat,lon`,
+    `${supabaseUrl}/rest/v1/spots?status=eq.approved&last_viewed_at=gte.${since}&select=id,lat,lon`,
     { headers: sbHeaders(serviceKey) }
   );
   if (!spotsRes.ok) {

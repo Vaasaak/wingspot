@@ -10,14 +10,23 @@
  * vrací SpotForecast vždy včetně windDir (vektorový průměr) a precip.
  */
 
+// Pokrytí celé Evropy — regionální high-res modely automaticky vrací null
+// mimo svůj doménu; vážený průměr je přeskočí. Ověřeno skriptem verify-models.mjs.
 export const MODELS = [
-  { name: "meteofrance_arome_france_hd", weight: 5 },
-  { name: "icon_d2",                     weight: 5 },
-  { name: "dmi_harmonie_arome_europe",   weight: 4 },
-  { name: "knmi_harmonie_arome_europe",  weight: 3 },
-  { name: "icon_eu",                     weight: 2 },
-  { name: "ecmwf_ifs025",               weight: 1.5 },
-  { name: "gfs_seamless",               weight: 1 },
+  // Vysoké rozlišení – FR/CZ/UK/BeNeLux oblast
+  { name: "meteofrance_arome_france_hd", weight: 5 },  // 1.5 km, FR + okolí
+  { name: "meteofrance_arome_france",    weight: 5 },  // 2.5 km, FR/ES/UK/DE
+  { name: "icon_d2",                     weight: 5 },  // 2 km, střední Evropa
+  { name: "dmi_harmonie_arome_europe",   weight: 4 },  // 2 km, severní Evropa
+  { name: "knmi_harmonie_arome_europe",  weight: 4 },  // 2 km, BeNeLux + okolí
+  { name: "ukmo_uk_deterministic_2km",   weight: 4 },  // 2 km, UK + Irsko
+  { name: "metno_nordic",                weight: 4 },  // 1 km, Skandinávie
+  // Střední rozlišení – širší pokrytí
+  { name: "meteofrance_arpege_europe",   weight: 2 },  // 11 km, celá Evropa
+  { name: "icon_eu",                     weight: 2 },  // 7 km, celá Evropa (fallback)
+  // Globální – spolehlivý střednědobý výhled
+  { name: "ecmwf_ifs025",               weight: 1.5 }, // ~9 km, globál
+  { name: "gfs_seamless",               weight: 1 },   // globál + delší dosah
 ];
 
 export const DET_DAYS = 16;
