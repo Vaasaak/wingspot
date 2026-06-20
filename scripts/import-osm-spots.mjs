@@ -27,8 +27,8 @@ const TILE_SIZE = 6;
 const HIGH_TRUST_TAGS = new Set(["windsurfing", "kitesurfing", "kiteboarding"]);
 const ALL_TAGS = [...HIGH_TRUST_TAGS, "sailing"];
 
-const CLUSTER_RADIUS_KM = 0.8;
-const DEDUP_RADIUS_KM   = 1.5;
+const CLUSTER_RADIUS_KM = 1.5;
+const DEDUP_RADIUS_KM   = 2.5;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
