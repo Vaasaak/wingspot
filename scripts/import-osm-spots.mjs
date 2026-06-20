@@ -212,7 +212,7 @@ console.log(`Po deduplikaci (${DEDUP_RADIUS_KM} km): ${deduped.length}`);
 const rows = deduped.map(p => {
   const name = p.name ? escapeSql(p.name) : `Spot ${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
   const country = guessCountry(p.lat, p.lon);
-  return `  ('osm', '${p.osmId}', '${name}', '${country}', ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}, '${p.trust}')`;
+  return `  ('osm', '${p.osmId}', '${name}', '${country}', ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}, '${p.trust}', 'approved')`;
 });
 
 const sql = `-- OSM import pro celou Evropu — vygenerováno ${new Date().toISOString()}
