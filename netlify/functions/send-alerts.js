@@ -5,8 +5,11 @@
 
 import { MODELS, DET_DAYS, ENS_DAYS, processForecast } from "../../shared/forecast-core.js";
 
-const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-const ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble";
+const OPENMETEO_BASE     = process.env.OPENMETEO_BASE          ?? "https://api.open-meteo.com";
+const OPENMETEO_ENS_BASE = process.env.OPENMETEO_ENSEMBLE_BASE ?? "https://ensemble-api.open-meteo.com";
+const OPENMETEO_KEY      = process.env.OPENMETEO_KEY ? `&apikey=${process.env.OPENMETEO_KEY}` : "";
+const FORECAST_URL = `${OPENMETEO_BASE}/v1/forecast`;
+const ENSEMBLE_URL = `${OPENMETEO_ENS_BASE}/v1/ensemble`;
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -68,9 +71,9 @@ async function getForecast(spot, supabaseUrl, serviceKey) {
   const loc = `&latitude=${spot.lat}&longitude=${spot.lon}&timezone=Europe%2FBerlin&wind_speed_unit=ms`;
   const detUrl =
     `${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation` +
-    `&daily=sunrise,sunset&models=${MODELS.map(m => m.name).join(",")}&forecast_days=${DET_DAYS}${loc}`;
+    `&daily=sunrise,sunset&models=${MODELS.map(m => m.name).join(",")}&forecast_days=${DET_DAYS}${loc}${OPENMETEO_KEY}`;
   const ensUrl =
-    `${ENSEMBLE_URL}?hourly=wind_speed_10m&models=gfs05&forecast_days=${ENS_DAYS}${loc}`;
+    `${ENSEMBLE_URL}?hourly=wind_speed_10m&models=gfs05&forecast_days=${ENS_DAYS}${loc}${OPENMETEO_KEY}`;
 
   const [detArr, ensArr] = await Promise.all([
     fetch(detUrl).then(r => r.json()).then(d => Array.isArray(d) ? d : [d]),

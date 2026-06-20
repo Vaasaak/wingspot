@@ -1,6 +1,9 @@
 // Načtení spotů: primárně z Supabase (schválené spoty), s fallbackem na
 // statická data z src/data/spots.ts (když Supabase není nastavené, je offline,
 // nebo tabulka ještě neexistuje). Díky tomu appka funguje za všech okolností.
+//
+// Když je předáno opts (domovské místo + vzdálenost), použije RPC spots_within
+// pro geo-dotaz na DB. Bez opts stáhne všechny schválené spoty (fallback).
 
 import { supabase, supabaseEnabled } from "./supabase";
 import { SPOTS } from "../data/spots";
@@ -34,7 +37,13 @@ function mapDbSpot(r: DbSpot): Spot {
   };
 }
 
-export async function loadSpots(): Promise<{
+export interface LoadSpotsOpts {
+  lat: number;
+  lon: number;
+  km: number;
+}
+
+export async function loadSpots(opts?: LoadSpotsOpts): Promise<{
   spots: Spot[];
   source: "db" | "fallback";
 }> {
@@ -42,16 +51,34 @@ export async function loadSpots(): Promise<{
     return { spots: SPOTS, source: "fallback" };
   }
   try {
-    const { data, error } = await supabase
-      .from("spots")
-      .select(
-        "id,name,country,lat,lon,good_dirs,bad_dirs,note,windguru_url,facilities"
-      )
-      .eq("status", "approved");
+    let data: DbSpot[] | null = null;
+    let error: unknown = null;
+
+    if (opts) {
+      // Geo-dotaz: spoty do opts.km km od domova (vyžaduje earthdistance extension v DB)
+      const res = await supabase.rpc("spots_within", {
+        p_lat: opts.lat,
+        p_lon: opts.lon,
+        p_km: opts.km,
+      });
+      data = res.data as DbSpot[] | null;
+      error = res.error;
+    }
+
+    // Fallback na celou tabulku: když opts není, nebo RPC selže (extension neinstalovaná)
+    if (!opts || error || !data || data.length === 0) {
+      const res = await supabase
+        .from("spots")
+        .select("id,name,country,lat,lon,good_dirs,bad_dirs,note,windguru_url,facilities")
+        .eq("status", "approved");
+      data = res.data as DbSpot[] | null;
+      error = res.error;
+    }
+
     if (error || !data || data.length === 0) {
       return { spots: SPOTS, source: "fallback" };
     }
-    return { spots: (data as DbSpot[]).map(mapDbSpot), source: "db" };
+    return { spots: data.map(mapDbSpot), source: "db" };
   } catch {
     return { spots: SPOTS, source: "fallback" };
   }

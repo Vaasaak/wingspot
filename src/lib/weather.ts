@@ -13,8 +13,11 @@ import { MODELS, DET_DAYS, ENS_DAYS, processForecast } from "../../shared/foreca
 
 export type { SpotForecast } from "../../shared/forecast-core.js";
 
-const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-const ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble";
+const OPENMETEO_BASE     = import.meta.env.VITE_OPENMETEO_BASE          ?? "https://api.open-meteo.com";
+const OPENMETEO_ENS_BASE = import.meta.env.VITE_OPENMETEO_ENSEMBLE_BASE ?? "https://ensemble-api.open-meteo.com";
+const OPENMETEO_KEY      = import.meta.env.VITE_OPENMETEO_KEY ? `&apikey=${import.meta.env.VITE_OPENMETEO_KEY as string}` : "";
+const FORECAST_URL = `${OPENMETEO_BASE}/v1/forecast`;
+const ENSEMBLE_URL = `${OPENMETEO_ENS_BASE}/v1/ensemble`;
 
 const CACHE_KEY    = "wingspot-forecast-cache-v6";
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -36,9 +39,9 @@ async function fetchDirectBatch(spots: Spot[]) {
 
   const detUrl =
     `${FORECAST_URL}?hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation` +
-    `&daily=sunrise,sunset&models=${MODELS.map((m) => m.name).join(",")}&forecast_days=${DET_DAYS}${loc}`;
+    `&daily=sunrise,sunset&models=${MODELS.map((m) => m.name).join(",")}&forecast_days=${DET_DAYS}${loc}${OPENMETEO_KEY}`;
   const ensUrl =
-    `${ENSEMBLE_URL}?hourly=wind_speed_10m&models=gfs05&forecast_days=${ENS_DAYS}${loc}`;
+    `${ENSEMBLE_URL}?hourly=wind_speed_10m&models=gfs05&forecast_days=${ENS_DAYS}${loc}${OPENMETEO_KEY}`;
 
   const [det, ens] = await Promise.all([fetchArray(detUrl), fetchArray(ensUrl)]);
   return spots.map((spot, i) => processForecast(spot.id, det[i] ?? {}, ens[i] ?? {}));

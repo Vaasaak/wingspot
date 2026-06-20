@@ -6,6 +6,9 @@
 [functions]
   directory = "netlify/functions"
 
+[functions."warm-cache"]
+  schedule = "@hourly"
+
 # Aby PWA fungovala správně, service worker se nemá kešovat
 [[headers]]
   for = "/sw.js"

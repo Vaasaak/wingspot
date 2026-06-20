@@ -1,23 +1,6 @@
 // Serverless proxy pro hledání stanic Windguru.
 // Podporuje hledání podle GPS (lat/lon) i podle názvu.
 // Spouští se server-side → žádné CORS problémy.
-const https = require("https");
-
-function get(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; WingSpot/1.0)",
-        Referer: "https://www.windguru.cz/",
-        Accept: "application/json, text/plain, */*",
-      },
-    }, (res) => {
-      let body = "";
-      res.on("data", (d) => { body += d; });
-      res.on("end", () => resolve({ status: res.statusCode, body }));
-    }).on("error", reject);
-  });
-}
 
 function parseStations(body) {
   try {
@@ -53,14 +36,24 @@ function mapStation(s) {
   };
 }
 
-exports.handler = async (event) => {
-  const { lat, lon, name } = event.queryStringParameters || {};
+const WGHEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; WingSpot/1.0)",
+  Referer: "https://www.windguru.cz/",
+  Accept: "application/json, text/plain, */*",
+};
 
-  const cors = {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Cache-Control": "public, max-age=3600",
-  };
+const CORS = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": process.env.URL ?? "*",
+  "Cache-Control": "public, max-age=3600",
+};
+
+export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: CORS, body: "" };
+  }
+
+  const { lat, lon, name } = event.queryStringParameters || {};
 
   // ---------- HLEDÁNÍ PODLE GPS ----------
   if (lat && lon) {
@@ -72,11 +65,10 @@ exports.handler = async (event) => {
 
     for (const url of queries) {
       try {
-        const res = await get(url);
-        const raw = parseStations(res.body);
+        const res = await fetch(url, { headers: WGHEADERS });
+        const raw = parseStations(await res.text());
         if (raw.length === 0) continue;
 
-        // Seřadit podle vzdálenosti a vzít nejbližší (max 25 km)
         const userLat = parseFloat(lat);
         const userLon = parseFloat(lon);
         const stations = raw
@@ -88,25 +80,24 @@ exports.handler = async (event) => {
           .slice(0, 3);
 
         if (stations.length > 0) {
-          return { statusCode: 200, headers: cors, body: JSON.stringify({ stations }) };
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ stations }) };
         }
       } catch { /* try next endpoint */ }
     }
-    // Nic nenalezeno
-    return { statusCode: 200, headers: cors, body: JSON.stringify({ stations: [] }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ stations: [] }) };
   }
 
-  // ---------- HLEDÁNÍ PODLE NÁZVU (záloha) ----------
+  // ---------- HLEDÁNÍ PODLE NÁZVU ----------
   if (!name) {
-    return { statusCode: 400, headers: cors, body: JSON.stringify({ error: "lat/lon or name required" }) };
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: "lat/lon or name required" }) };
   }
 
   const url = `https://www.windguru.cz/int/iapi.php?q=search&search=${encodeURIComponent(name)}&stype=station&lang=en`;
   try {
-    const res = await get(url);
-    const stations = parseStations(res.body).slice(0, 5).map(mapStation).filter((s) => s.url);
-    return { statusCode: 200, headers: cors, body: JSON.stringify({ stations }) };
+    const res = await fetch(url, { headers: WGHEADERS });
+    const stations = parseStations(await res.text()).slice(0, 5).map(mapStation).filter((s) => s.url);
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ stations }) };
   } catch (e) {
-    return { statusCode: 200, headers: cors, body: JSON.stringify({ stations: [], error: e.message }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ stations: [], error: e.message }) };
   }
 };

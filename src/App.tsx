@@ -82,7 +82,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const { spots: loaded } = await loadSpots(); // DB nebo fallback
+      const { spots: loaded } = await loadSpots({ lat: settings.homeLat, lon: settings.homeLon, km: settings.maxDistanceKm });
       setSpots(loaded);
       const res = await fetchForecasts(loaded, force);
       setForecasts(res.data);
@@ -94,7 +94,7 @@ export default function App() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { void load(false); }, []);
 
   // ulož nastavení a oblíbené při změně (localStorage vždy, DB když přihlášen)

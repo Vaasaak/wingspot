@@ -293,3 +293,44 @@ create policy "admin update reports"
 update profiles
 set is_admin = true
 where id = (select id from auth.users where email = 'vasikpicasa@gmail.com');
+
+-- =====================================================================
+--  Fáze 1.1: geo-dotaz na spoty (earthdistance)
+-- =====================================================================
+
+-- Rozšíření pro výpočet vzdálenosti na povrchu Země.
+-- V Supabase: Database → Extensions → zapni "cube" a "earthdistance",
+--             nebo spusť tyhle příkazy (vyžaduje superuser).
+create extension if not exists cube;
+create extension if not exists earthdistance;
+
+-- Index pro rychlé geo-dotazy (zakomentuj pokud extensions nejsou dostupné).
+create index if not exists spots_latlon_idx
+  on spots using gist (ll_to_earth(lat, lon))
+  where status = 'approved';
+
+-- RPC: vrátí schválené spoty v okruhu p_km km od zadaných souřadnic.
+-- SECURITY DEFINER obchází RLS — bezpečné, protože WHERE filtruje jen 'approved'.
+create or replace function public.spots_within(
+  p_lat double precision,
+  p_lon double precision,
+  p_km  double precision
+)
+returns setof spots
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select *
+  from spots
+  where status = 'approved'
+    and earth_distance(
+          ll_to_earth(lat, lon),
+          ll_to_earth(p_lat, p_lon)
+        ) / 1000.0 <= p_km
+  order by earth_distance(
+             ll_to_earth(lat, lon),
+             ll_to_earth(p_lat, p_lon)
+           );
+$$;
