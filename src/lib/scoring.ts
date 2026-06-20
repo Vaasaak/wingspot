@@ -6,23 +6,11 @@
 import type { Spot, DirRange } from "../data/spots";
 import type { Settings } from "./settings";
 import type { SpotForecast } from "./weather";
+import { RANK } from "./scoring-config";
+
+export { RANK } from "./scoring-config";
 
 export type Rating = "great" | "good" | "potential" | "none";
-
-// ---- laditelné konstanty rankingu (na jednom místě) ----
-export const RANK = {
-  idealHours: 6, // okno ≥ 6 h = plný bod za délku
-  idealWindOver: 6, // průměr o 6 m/s nad prahem = plný bod za sílu
-  wLength: 0.5,
-  wStrength: 0.3,
-  wConfidence: 0.2,
-  gustyRatio: 1.5, // nárazy/vítr nad tímto = poryvové, penalizace
-  gustyPenalty: 0.2, // max odečet ze skóre za poryvovost
-  precipPerMm: 0.05, // odečet za každý mm srážek v okně
-  precipMax: 0.25, // strop penalizace za srážky
-  distNearMul: 1.0, // násobič skóre na blízku
-  distFarMul: 0.6, // násobič na hraně maxDistanceKm
-};
 
 export interface HourEval {
   time: string;

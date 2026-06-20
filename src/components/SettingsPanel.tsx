@@ -26,6 +26,7 @@ export function SettingsPanel({
 
   useEffect(() => {
     if (query.trim().length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       return;
     }

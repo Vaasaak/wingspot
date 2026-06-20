@@ -52,9 +52,9 @@ export async function searchPlace(query: string): Promise<GeoResult[]> {
     "&count=6&language=cs&format=json";
   const res = await fetch(url);
   if (!res.ok) return [];
-  const data = await res.json();
+  const data = await res.json() as { results?: { name: string; admin1?: string; latitude: number; longitude: number; country_code: string }[] };
   if (!data.results) return [];
-  return data.results.map((r: any) => ({
+  return data.results.map((r) => ({
     name: [r.name, r.admin1].filter(Boolean).join(", "),
     lat: r.latitude,
     lon: r.longitude,

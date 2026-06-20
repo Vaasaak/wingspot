@@ -57,6 +57,7 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!coords) { setNearbySpot(null); setConfirmDuplicate(false); return; }
     const nearby = existingSpots
       .map((s) => ({ name: s.name, dist: distanceKm(coords.lat, coords.lon, s.lat, s.lon) }))

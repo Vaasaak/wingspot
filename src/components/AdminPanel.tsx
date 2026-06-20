@@ -99,7 +99,8 @@ export function AdminPanel({ onClose, onApproved }: Props) {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, []);
 
   function updateWindguru(id: string, val: string) {
     setSpots((prev) => prev.map((s) => (s.id === id ? { ...s, _windguru: val } : s)));

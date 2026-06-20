@@ -55,6 +55,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, Math.min(sorted.length - 1, idx))];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchArray(url: string): Promise<any[]> {
   const res = await fetch(url);
   if (!res.ok) throw new Error("Open-Meteo nedostupné (" + res.status + ")");
@@ -82,6 +83,7 @@ async function fetchDirectBatch(spots: Spot[]): Promise<SpotForecast[]> {
 
 // ── Zpracování dat pro jeden spot ─────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processSpotData(spotId: string, detLoc: any, ensLoc: any): SpotForecast {
   const ensH = ensLoc.hourly ?? {};
   const times: string[] = ensH.time ?? [];

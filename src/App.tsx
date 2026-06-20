@@ -84,16 +84,15 @@ export default function App() {
       const res = await fetchForecasts(loaded, force);
       setForecasts(res.data);
       setFetchedAt(res.fetchedAt);
-    } catch (e: any) {
-      setError(e?.message ?? "Nepodařilo se stáhnout předpověď.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nepodařilo se stáhnout předpověď.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    load(false);
-  }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(false); }, []);
 
   // ulož nastavení a oblíbené při změně (localStorage vždy, DB když přihlášen)
   useEffect(() => saveSettings(settings), [settings]);
@@ -219,6 +218,7 @@ export default function App() {
   useEffect(() => {
     if (derived && derived.dates.length > 0) {
       if (!derived.dates.includes(selectedDate)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedDate(derived.dates[0]);
       }
     }
@@ -349,8 +349,9 @@ export default function App() {
       )}
 
       <footer className="footer muted small">
-        Data: Open-Meteo · WingSpot ukazuje předpověď, vždy posuď podmínky na
-        místě sám. 🌊
+        Předpověď: <a href="https://open-meteo.com" target="_blank" rel="noopener" style={{ color: "inherit" }}>Open-Meteo</a> (CC BY 4.0) ·
+        Spoty: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style={{ color: "inherit" }}>© OpenStreetMap</a> (ODbL) ·
+        WingSpot ukazuje předpověď, vždy posuď podmínky na místě sám. 🌊
       </footer>
 
       {showSettings && (

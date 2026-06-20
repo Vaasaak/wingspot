@@ -29,7 +29,7 @@ export function AlertsModal({ session, spots, onClose }: Props) {
   const [daysAhead, setDaysAhead] = useState(3);
   const [weekendsOnly, setWeekendsOnly] = useState(false);
 
-  const approvedSpots = spots.filter((s) => !("status" in s) || (s as any).status === "approved" || true);
+  const approvedSpots = spots;
 
   async function loadAlerts() {
     if (!supabase) return;
@@ -42,7 +42,8 @@ export function AlertsModal({ session, spots, onClose }: Props) {
     setLoading(false);
   }
 
-  useEffect(() => { loadAlerts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { void loadAlerts(); }, []);
 
   async function addAlert() {
     if (!supabase || !spotId) return;
