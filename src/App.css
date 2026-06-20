@@ -986,4 +986,10 @@
   .ns-title {
     font-size: 1.05rem;
   }
+  .btn-text {
+    display: none;
+  }
+  .brand-sub {
+    display: none;
+  }
 }

@@ -20,7 +20,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     });
     if (error) {
       setState("error");
-      setMsg(error.message);
+      setMsg(error.message || "Přihlášení se nezdařilo. Zkus to znovu.");
     } else {
       setState("sent");
     }

@@ -281,7 +281,7 @@ export default function App() {
                   onClick={() => supabase?.auth.signOut()}
                   title={session.user.email ?? ""}
                 >
-                  👤 Odhlásit
+                  👤 <span className="btn-text">Odhlásit</span>
                 </button>
               ) : (
                 <button className="auth-btn" onClick={() => setShowLogin(true)}>
