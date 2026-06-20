@@ -334,3 +334,42 @@ as $$
              ll_to_earth(p_lat, p_lon)
            );
 $$;
+
+-- =====================================================================
+--  P2: settings sync, unsubscribe tokeny, rate-limity
+-- =====================================================================
+
+-- 1. Sloupec settings v profiles (ukládá nastavení appky napříč zařízeními)
+alter table profiles add column if not exists settings jsonb;
+
+-- 2. Unsubscribe token pro každý alert (UUID, jedinečný odkaz pro odhlášení)
+alter table alerts add column if not exists unsubscribe_token uuid not null default gen_random_uuid();
+
+-- 3. Rate-limit: max 5 pending spotů na uživatele (zabrání spamu)
+drop policy if exists "auth users can add spots" on spots;
+create policy "auth users can add spots"
+  on spots for insert
+  with check (
+    auth.uid() is not null
+    and status = 'pending'
+    and created_by = auth.uid()
+    and (
+      select count(*) from spots
+      where created_by = auth.uid() and status = 'pending'
+    ) < 5
+  );
+
+-- 4. Rate-limit: max 5 hlášení od stejného uživatele za hodinu
+drop policy if exists "anyone can report" on reports;
+create policy "anyone can report"
+  on reports for insert
+  with check (
+    coalesce(
+      (
+        select count(*) from reports
+        where reporter_id = auth.uid()
+          and created_at > now() - interval '1 hour'
+      ),
+      0
+    ) < 5
+  );

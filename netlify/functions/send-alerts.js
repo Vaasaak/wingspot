@@ -151,7 +151,9 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
 }
 
-function buildEmail(spotName, windguruUrl, windows) {
+function buildEmail(spotName, windguruUrl, windows, unsubscribeToken) {
+  const siteUrl = process.env.URL ?? "https://wingspot.netlify.app";
+  const unsubUrl = `${siteUrl}/.netlify/functions/unsubscribe?token=${unsubscribeToken}`;
   const rows = windows.map(w =>
     `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${formatDate(w.date)}</td>
@@ -185,7 +187,8 @@ function buildEmail(spotName, windguruUrl, windows) {
       ${windguruUrl ? `<a href="${windguruUrl}" style="display:inline-block;margin-top:20px;padding:10px 18px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-size:0.9rem;">Ověřit na Windguru ↗</a>` : ""}
     </div>
     <div style="padding:16px 28px;border-top:1px solid #2a2a2a;font-size:0.78rem;color:#64748b;">
-      WingSpot · předpověď je orientační, vždy posuď podmínky na místě sám.
+      WingSpot · předpověď je orientační, vždy posuď podmínky na místě sám.<br>
+      <a href="${unsubUrl}" style="color:#475569;text-decoration:underline;">Odhlásit ze zasílání</a>
     </div>
   </div>
 </body>
@@ -219,7 +222,7 @@ export const handler = async (event) => {
   }
 
   const alerts = await sbGet(
-    `${supabaseUrl}/rest/v1/alerts?active=eq.true&select=id,user_email,spot_id,min_wind_ms,max_days_ahead,weekends_only,last_sent_at`,
+    `${supabaseUrl}/rest/v1/alerts?active=eq.true&select=id,user_email,spot_id,min_wind_ms,max_days_ahead,weekends_only,last_sent_at,unsubscribe_token`,
     serviceKey
   );
   if (!alerts.length) {
@@ -261,13 +264,13 @@ export const handler = async (event) => {
     if (!windows.length) { skipped.push({ id: alert.id, reason: "no matching wind window" }); continue; }
 
     if (!emailsToSend[alert.user_email]) emailsToSend[alert.user_email] = [];
-    emailsToSend[alert.user_email].push({ spot, windows, alertId: alert.id });
+    emailsToSend[alert.user_email].push({ spot, windows, alertId: alert.id, unsubscribeToken: alert.unsubscribe_token });
   }
 
   let sent = 0;
   const emailErrors = [];
   for (const [email, items] of Object.entries(emailsToSend)) {
-    for (const { spot, windows, alertId } of items) {
+    for (const { spot, windows, alertId, unsubscribeToken } of items) {
       try {
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -278,7 +281,7 @@ export const handler = async (event) => {
             subject: testMode
               ? `🧪 WingSpot test – ${spot.name}`
               : `🌬️ Okno na ${spot.name} – ${windows[0] ? formatDate(windows[0].date) : ""}`,
-            html: buildEmail(spot.name, spot.windguru_url, windows),
+            html: buildEmail(spot.name, spot.windguru_url, windows, unsubscribeToken),
           }),
         });
         if (res.ok) {

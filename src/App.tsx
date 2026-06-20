@@ -28,7 +28,11 @@ import { AdminPanel } from "./components/AdminPanel";
 import { ReportModal } from "./components/ReportModal";
 import { AlertsModal } from "./components/AlertsModal";
 import { supabase, supabaseEnabled } from "./lib/supabase";
-import { loadFavoritesFromDb, saveFavoritesToDb, loadIsAdminFromDb } from "./lib/profile";
+import {
+  loadFavoritesFromDb, saveFavoritesToDb,
+  loadIsAdminFromDb,
+  loadSettingsFromDb, saveSettingsToDb,
+} from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
 
 export default function App() {
@@ -52,25 +56,27 @@ export default function App() {
   // sleduj přihlášení + při přihlášení načti oblíbené a admin roli z DB
   useEffect(() => {
     if (!supabaseEnabled || !supabase) return;
+    function syncProfile(uid: string) {
+      // Favorites: nedestruktivní merge (lokální ∪ DB — neztratíme lokálně přidané)
+      loadFavoritesFromDb(uid).then((dbFavs) => {
+        if (dbFavs !== null) setFavorites(prev => [...new Set([...prev, ...dbFavs])]);
+      });
+      // Settings: DB přebije lokální (nastavení sdílíme napříč zařízeními)
+      loadSettingsFromDb(uid).then((dbSettings) => {
+        if (dbSettings) setSettings(prev => ({ ...prev, ...dbSettings }));
+      });
+      loadIsAdminFromDb(uid).then(setIsAdmin);
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      if (data.session?.user.id) {
-        const uid = data.session.user.id;
-        loadFavoritesFromDb(uid).then((dbFavs) => {
-          if (dbFavs !== null) setFavorites(dbFavs);
-        });
-        loadIsAdminFromDb(uid).then(setIsAdmin);
-      }
+      if (data.session?.user.id) syncProfile(data.session.user.id);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       setShowLogin(false);
       if (s?.user.id) {
-        const uid = s.user.id;
-        loadFavoritesFromDb(uid).then((dbFavs) => {
-          if (dbFavs !== null) setFavorites(dbFavs);
-        });
-        loadIsAdminFromDb(uid).then(setIsAdmin);
+        syncProfile(s.user.id);
       } else {
         setIsAdmin(false);
       }
@@ -98,12 +104,13 @@ export default function App() {
   useEffect(() => { void load(false); }, []);
 
   // ulož nastavení a oblíbené při změně (localStorage vždy, DB když přihlášen)
-  useEffect(() => saveSettings(settings), [settings]);
+  useEffect(() => {
+    saveSettings(settings);
+    if (session?.user.id) saveSettingsToDb(session.user.id, settings);
+  }, [settings, session?.user.id]);
   useEffect(() => {
     saveFavorites(favorites);
-    if (session?.user.id) {
-      saveFavoritesToDb(session.user.id, favorites);
-    }
+    if (session?.user.id) saveFavoritesToDb(session.user.id, favorites);
   }, [favorites, session?.user.id]);
 
   function toggleFav(id: string) {
