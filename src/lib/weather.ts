@@ -2,7 +2,7 @@
 //
 // Architektura (3 vrstvy cache):
 //  1. localStorage (30 min) — nejrychlejší, per-prohlížeč
-//  2. Netlify funkce + Supabase cache (1 hod) — sdílená mezi uživateli
+//  2. Serverless funkce + Supabase cache (1 hod) — sdílená mezi uživateli
 //  3. Přímé Open-Meteo batch (fallback pro lokální dev / výpadek funkce)
 //
 // Forecast logika (MODELS, processForecast) je v shared/forecast-core.js
@@ -47,10 +47,10 @@ async function fetchDirectBatch(spots: Spot[]) {
   return spots.map((spot, i) => processForecast(spot.id, det[i] ?? {}, ens[i] ?? {}));
 }
 
-// ── Per-spot fetch přes Netlify funkci (sdílená Supabase cache) ───────────
+// ── Per-spot fetch přes serverless funkci (sdílená Supabase cache) ────────
 
 async function fetchViaFunction(spot: Spot) {
-  const url = `/.netlify/functions/forecast?spotId=${encodeURIComponent(spot.id)}&lat=${spot.lat}&lon=${spot.lon}`;
+  const url = `/api/forecast?spotId=${encodeURIComponent(spot.id)}&lat=${spot.lat}&lon=${spot.lon}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`forecast function ${res.status}`);
   return res.json();

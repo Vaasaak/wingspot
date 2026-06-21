@@ -1,19 +1,19 @@
-name: Daily wind alerts
+name: Hourly cache warm-up
 
 on:
   schedule:
-    - cron: '0 5 * * *'   # každý den v 6:00 SEČ (= 5:00 UTC)
+    - cron: '0 * * * *'   # každou hodinu
   workflow_dispatch:        # možnost spustit ručně z GitHub UI
 
 jobs:
-  send-alerts:
+  warm-cache:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger send-alerts function
+      - name: Trigger warm-cache function
         run: |
           STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -H "X-Alert-Secret: ${{ secrets.ALERT_SECRET }}" \
-            "https://TVOJE_DOMENA/api/send-alerts")
+            -H "X-Warm-Cache-Secret: ${{ secrets.WARM_CACHE_SECRET }}" \
+            "https://TVOJE_DOMENA/api/warm-cache")
           cat /tmp/response.json
           echo ""
           if [ "$STATUS" != "200" ]; then
