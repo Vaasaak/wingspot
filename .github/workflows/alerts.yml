@@ -13,7 +13,7 @@ jobs:
         run: |
           STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -H "X-Alert-Secret: ${{ secrets.ALERT_SECRET }}" \
-            "https://TVOJE_DOMENA/api/send-alerts")
+            "https://windspots.eu/api/send-alerts")
           cat /tmp/response.json
           echo ""
           if [ "$STATUS" != "200" ]; then
