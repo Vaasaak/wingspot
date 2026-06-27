@@ -2,18 +2,21 @@ import { useState, useEffect } from "react";
 import { SquareParking, Droplets, Utensils, Store } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { distanceKm } from "../lib/geo";
+import { distanceKm, mapyCzUrl } from "../lib/geo";
+import { findNearbyOrSimilarSpots } from "../lib/spotsDb";
+import type { NearbySpotMatch } from "../lib/spotsDb";
 import { MapPicker } from "./MapPicker";
 import { WindCompass, sectorsToDirRanges, defaultSectors } from "./WindCompass";
 import type { SectorState } from "./WindCompass";
 import type { Session } from "@supabase/supabase-js";
-import type { Spot, SpotFacilities } from "../data/spots";
+import type { SpotFacilities, ParkingPriceUnit } from "../data/spots";
 
 interface Props {
   session: Session;
-  existingSpots: Spot[];
   onClose: () => void;
 }
+
+type NearMatch = NearbySpotMatch & { dist: number | null };
 
 function parseGps(raw: string): { lat: number; lon: number } | null {
   const s = raw.replace(/(\d),(\d)/g, "$1.$2").trim();
@@ -27,7 +30,7 @@ function parseGps(raw: string): { lat: number; lon: number } | null {
 
 type ParkingVal = "free" | "paid" | "none" | undefined;
 
-export function AddSpotModal({ session, existingSpots, onClose }: Props) {
+export function AddSpotModal({ session, onClose }: Props) {
   const [name, setName] = useState("");
   const [country, setCountry] = useState<"CZ" | "DE">("CZ");
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
@@ -36,10 +39,14 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
   const [windguru, setWindguru] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [msg, setMsg] = useState("");
-  const [nearbySpot, setNearbySpot] = useState<string | null>(null);
+  const [nearbySpots, setNearbySpots] = useState<NearMatch[]>([]);
   const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
   const [parking, setParking] = useState<ParkingVal>(undefined);
+  const [parkingPrice, setParkingPrice] = useState("");
+  const [parkingUnit, setParkingUnit] = useState<ParkingPriceUnit>("day");
+  const [parkingCurrency, setParkingCurrency] = useState("CZK");
+  const [parkingNote, setParkingNote] = useState("");
   const [wc, setWc] = useState<boolean | undefined>(undefined);
   const [refreshments, setRefreshments] = useState<boolean | undefined>(undefined);
   const [rental, setRental] = useState<boolean | undefined>(undefined);
@@ -60,24 +67,46 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
     if (parsed) setCoords(parsed);
   }
 
+  // Detekce duplicit: dotaž se DB (stejný zdroj jako appka) na schválené spoty
+  // v okolí NOVÉ polohy (do 5 km) i podle podobnosti názvu. Debounce 400 ms.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!coords) { setNearbySpot(null); setConfirmDuplicate(false); return; }
-    const nearby = existingSpots
-      .map((s) => ({ name: s.name, dist: distanceKm(coords.lat, coords.lon, s.lat, s.lon) }))
-      .filter((x) => x.dist < 5)
-      .sort((a, b) => a.dist - b.dist)[0];
-    setNearbySpot(nearby ? `${nearby.name} (~${nearby.dist.toFixed(1)} km)` : null);
-    if (!nearby) setConfirmDuplicate(false);
-  }, [coords]); // eslint-disable-line react-hooks/exhaustive-deps
+    const q = name.trim();
+    const id = setTimeout(async () => {
+      if (!coords && q.length < 3) {
+        setNearbySpots([]);
+        setConfirmDuplicate(false);
+        return;
+      }
+      const matches = await findNearbyOrSimilarSpots(coords?.lat ?? null, coords?.lon ?? null, q);
+      const withDist: NearMatch[] = matches
+        .map((m) => ({
+          ...m,
+          dist: coords ? distanceKm(coords.lat, coords.lon, m.lat, m.lon) : null,
+        }))
+        .sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9))
+        .slice(0, 4);
+      setNearbySpots(withDist);
+      if (withDist.length === 0) setConfirmDuplicate(false);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [coords, name]);
 
   async function submit() {
     if (!supabase || !valid) return;
-    if (nearbySpot && !confirmDuplicate) { setConfirmDuplicate(true); return; }
+    if (nearbySpots.length > 0 && !confirmDuplicate) { setConfirmDuplicate(true); return; }
     setState("sending");
 
     const facilities: SpotFacilities = {};
     if (parking !== undefined) facilities.parking = parking;
+    if (parking === "paid") {
+      const price = parseFloat(parkingPrice.replace(",", "."));
+      if (!isNaN(price)) {
+        facilities.parkingPrice = price;
+        facilities.parkingPriceUnit = parkingUnit;
+        facilities.parkingCurrency = parkingCurrency;
+      }
+      if (parkingNote.trim()) facilities.parkingNote = parkingNote.trim();
+    }
     if (wc !== undefined) facilities.wc = wc;
     if (refreshments !== undefined) facilities.refreshments = refreshments;
     if (rental !== undefined) facilities.rental = rental;
@@ -157,10 +186,29 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
               {coords && <p className="gps-ok small">✓ {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}</p>}
               {gpsError && <p className="warn-text small">Souřadnice nerozpoznány.</p>}
 
-              {nearbySpot && (
+              {nearbySpots.length > 0 && (
                 <div className="duplicate-warning">
-                  ⚠ Podobný spot v okolí: <b>{nearbySpot}</b>
-                  {confirmDuplicate && <span className="muted"> — přidáš ho stejně?</span>}
+                  <div>⚠ Tohle už možná existuje:</div>
+                  <ul className="dup-list">
+                    {nearbySpots.map((m) => (
+                      <li key={m.id}>
+                        <b>{m.name}</b>
+                        {m.dist != null && <span className="muted"> · ~{m.dist.toFixed(1)} km</span>}{" "}
+                        <a
+                          href={mapyCzUrl(m.lat, m.lon)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="dup-map"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          📍 na mapě
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                  {confirmDuplicate && (
+                    <div className="muted small">Žádný z nich? Přidej spot tlačítkem níže.</div>
+                  )}
                 </div>
               )}
 
@@ -216,6 +264,49 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                     ))}
                   </div>
                 </div>
+                {parking === "paid" && (
+                  <div className="parking-price">
+                    <div className="row" style={{ gap: 6 }}>
+                      <input
+                        className="text-input"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={parkingPrice}
+                        onChange={(e) => setParkingPrice(e.target.value)}
+                        placeholder="cena"
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <select
+                        className="text-input"
+                        value={parkingCurrency}
+                        onChange={(e) => setParkingCurrency(e.target.value)}
+                        style={{ width: "auto" }}
+                      >
+                        <option value="CZK">Kč</option>
+                        <option value="EUR">€</option>
+                        <option value="PLN">zł</option>
+                      </select>
+                      <select
+                        className="text-input"
+                        value={parkingUnit}
+                        onChange={(e) => setParkingUnit(e.target.value as ParkingPriceUnit)}
+                        style={{ width: "auto" }}
+                      >
+                        <option value="hour">/ hod</option>
+                        <option value="day">/ den</option>
+                        <option value="once">jednorázově</option>
+                      </select>
+                    </div>
+                    <input
+                      className="text-input"
+                      value={parkingNote}
+                      onChange={(e) => setParkingNote(e.target.value)}
+                      placeholder="poznámka k parkování (volitelné)"
+                      style={{ marginTop: 6 }}
+                    />
+                  </div>
+                )}
                 {FAC_ROWS.map(({ key, Icon, label, val, set }) => (
                   <div key={key} className="fac-row">
                     <span className="fac-label"><Icon size={15} /> {label}</span>
@@ -236,7 +327,7 @@ export function AddSpotModal({ session, existingSpots, onClose }: Props) {
                 style={{ marginTop: 18, width: "100%" }}
               >
                 {state === "sending" ? "Odesílám…"
-                  : nearbySpot && !confirmDuplicate ? "Přidat i přesto ↵"
+                  : nearbySpots.length > 0 && !confirmDuplicate ? "Přidat i přesto ↵"
                   : "Odeslat ke schválení"}
               </button>
             </>

@@ -43,6 +43,51 @@ export interface LoadSpotsOpts {
   km: number;
 }
 
+export interface NearbySpotMatch {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+}
+
+// Najde už existující SCHVÁLENÉ spoty pro detekci duplicit při přidávání:
+// geo-dotaz do `km` km od zadané polohy + shoda podle názvu (ILIKE).
+// Stejný zdroj jako zbytek appky (tabulka spots, status=approved).
+export async function findNearbyOrSimilarSpots(
+  lat: number | null,
+  lon: number | null,
+  name: string,
+  km = 5
+): Promise<NearbySpotMatch[]> {
+  if (!supabaseEnabled || !supabase) return [];
+  const byId = new Map<string, NearbySpotMatch>();
+  try {
+    if (lat != null && lon != null) {
+      const res = await supabase.rpc("spots_within", { p_lat: lat, p_lon: lon, p_km: km });
+      if (!res.error && Array.isArray(res.data)) {
+        for (const r of res.data as DbSpot[]) {
+          byId.set(r.id, { id: r.id, name: r.name, lat: r.lat, lon: r.lon });
+        }
+      }
+    }
+    const q = name.trim();
+    if (q.length >= 3) {
+      const res = await supabase
+        .from("spots")
+        .select("id,name,lat,lon")
+        .eq("status", "approved")
+        .ilike("name", `%${q}%`)
+        .limit(8);
+      if (!res.error && Array.isArray(res.data)) {
+        for (const r of res.data as NearbySpotMatch[]) {
+          byId.set(r.id, { id: r.id, name: r.name, lat: r.lat, lon: r.lon });
+        }
+      }
+    }
+  } catch { /* ignore – detekce duplicit je best-effort */ }
+  return [...byId.values()];
+}
+
 export async function loadSpots(opts?: LoadSpotsOpts): Promise<{
   spots: Spot[];
   source: "db" | "fallback";

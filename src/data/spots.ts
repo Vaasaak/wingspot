@@ -18,8 +18,14 @@ export interface DirRange {
   to: number;
 }
 
+export type ParkingPriceUnit = "hour" | "day" | "once";
+
 export interface SpotFacilities {
   parking?: "free" | "paid" | "none";
+  parkingPrice?: number; // cena (jen u placeného parkování)
+  parkingPriceUnit?: ParkingPriceUnit; // za hodinu / za den / jednorázově
+  parkingCurrency?: string; // CZK / EUR / PLN …
+  parkingNote?: string; // volitelná poznámka k parkování
   wc?: boolean;
   refreshments?: boolean;
   rental?: boolean;

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { SquareParking, Droplets, Utensils, Store, X } from "lucide-react";
-import type { Spot } from "../data/spots";
+import type { Spot, SpotFacilities } from "../data/spots";
 import type { DayEval } from "../lib/scoring";
 import type { DistanceMetric } from "../lib/settings";
 import { distanceLabel } from "../lib/geo";
@@ -15,6 +15,14 @@ function FacChip({ icon, label, off }: { icon: ReactNode; label: string; off?: b
       {label}
     </span>
   );
+}
+
+// Popisek placeného parkování i s cenou, pokud ji uživatel zadal.
+function paidParkingLabel(f: SpotFacilities): string {
+  if (f.parkingPrice == null) return "Parking placený";
+  const cur = f.parkingCurrency === "EUR" ? "€" : f.parkingCurrency === "PLN" ? "zł" : "Kč";
+  const unit = f.parkingPriceUnit === "hour" ? "/h" : f.parkingPriceUnit === "day" ? "/den" : "";
+  return `Parking ${f.parkingPrice} ${cur}${unit}`;
 }
 
 export function SpotRow({
@@ -141,7 +149,7 @@ export function SpotRow({
             {spot.facilities && (
               <div className="facilities-row">
                 {spot.facilities.parking === "free"  && <FacChip icon={<SquareParking size={13}/>} label="Parking zdarma" />}
-                {spot.facilities.parking === "paid"  && <FacChip icon={<SquareParking size={13}/>} label="Parking placený" />}
+                {spot.facilities.parking === "paid"  && <FacChip icon={<SquareParking size={13}/>} label={paidParkingLabel(spot.facilities)} />}
                 {spot.facilities.parking === "none"  && <FacChip icon={<SquareParking size={13}/>} label="Bez parkingu" off />}
                 {spot.facilities.wc === true          && <FacChip icon={<Droplets size={13}/>} label="WC" />}
                 {spot.facilities.wc === false         && <FacChip icon={<Droplets size={13}/>} label="Bez WC" off />}
@@ -149,6 +157,9 @@ export function SpotRow({
                 {spot.facilities.refreshments === false && <FacChip icon={<Utensils size={13}/>} label="Bez občerstvení" off />}
                 {spot.facilities.rental === true      && <FacChip icon={<Store size={13}/>} label="Půjčovna" />}
               </div>
+            )}
+            {spot.facilities?.parkingNote && (
+              <p className="muted small">🅿 {spot.facilities.parkingNote}</p>
             )}
 
             <div className="spot-note-actions">

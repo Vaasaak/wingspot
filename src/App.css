@@ -787,6 +787,35 @@
   font-size: 0.85rem;
   margin-top: 8px;
 }
+.dup-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dup-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dup-map {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* Placené parkování – cena */
+.parking-price {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 4px;
+}
+.parking-price .row {
+  display: flex;
+  align-items: center;
+}
 
 /* Vybavenost – formulář */
 .facilities-form {

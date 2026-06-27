@@ -445,7 +445,6 @@ export default function App() {
       {showAddSpot && session && (
         <AddSpotModal
           session={session}
-          existingSpots={spots}
           onClose={() => setShowAddSpot(false)}
         />
       )}
