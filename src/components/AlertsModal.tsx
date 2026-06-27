@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { searchApprovedSpots, getSpotsByIds } from "../lib/spotsDb";
+import type { NearbySpotMatch } from "../lib/spotsDb";
 import type { Session } from "@supabase/supabase-js";
 import type { Spot } from "../data/spots";
 
 interface Alert {
   id: string;
-  spot_id: string;
+  spot_ids: string[];
   min_wind_ms: number;
   max_days_ahead: number;
   weekends_only: boolean;
@@ -24,35 +26,75 @@ export function AlertsModal({ session, spots, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const [spotId, setSpotId] = useState(spots[0]?.id ?? "");
+  // id → název pro zobrazení uložených alertů (spot nemusí být v okruhu kolem domova)
+  const [names, setNames] = useState<Record<string, string>>(
+    () => Object.fromEntries(spots.map((s) => [s.id, s.name]))
+  );
+
+  // výběr spotů pro nový alert (multiselect)
+  const [selected, setSelected] = useState<NearbySpotMatch[]>([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<NearbySpotMatch[]>([]);
+
   const [minWind, setMinWind] = useState(6);
   const [daysAhead, setDaysAhead] = useState(3);
   const [weekendsOnly, setWeekendsOnly] = useState(false);
-
-  const approvedSpots = spots;
 
   async function loadAlerts() {
     if (!supabase) return;
     const { data } = await supabase
       .from("alerts")
-      .select("id,spot_id,min_wind_ms,max_days_ahead,weekends_only,active")
+      .select("id,spot_ids,min_wind_ms,max_days_ahead,weekends_only,active")
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: true });
-    setAlerts((data ?? []) as Alert[]);
+    const list = (data ?? []) as Alert[];
+    setAlerts(list);
     setLoading(false);
+
+    // dotáhni názvy spotů, které ještě neznáme
+    const needed = [...new Set(list.flatMap((a) => a.spot_ids))].filter((id) => !names[id]);
+    if (needed.length) {
+      const fetched = await getSpotsByIds(needed);
+      if (fetched.length) {
+        setNames((prev) => ({ ...prev, ...Object.fromEntries(fetched.map((s) => [s.id, s.name])) }));
+      }
+    }
   }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { void loadAlerts(); }, []);
 
+  // našeptávač spotů (DB, všechny schválené – ne jen okolí domova)
+  useEffect(() => {
+    const q = query.trim();
+    const id = setTimeout(async () => {
+      if (q.length < 2) { setResults([]); return; }
+      const found = await searchApprovedSpots(q);
+      const selIds = new Set(selected.map((s) => s.id));
+      setResults(found.filter((r) => !selIds.has(r.id)));
+    }, 300);
+    return () => clearTimeout(id);
+  }, [query, selected]);
+
+  function addSpot(s: NearbySpotMatch) {
+    setSelected((prev) => (prev.some((x) => x.id === s.id) ? prev : [...prev, s]));
+    setNames((prev) => ({ ...prev, [s.id]: s.name }));
+    setQuery("");
+    setResults([]);
+  }
+
+  function removeSpot(id: string) {
+    setSelected((prev) => prev.filter((s) => s.id !== id));
+  }
+
   async function addAlert() {
-    if (!supabase || !spotId) return;
+    if (!supabase || selected.length === 0) return;
     setSaving(true);
     setErr("");
     const { error } = await supabase.from("alerts").insert({
       user_id: session.user.id,
       user_email: session.user.email,
-      spot_id: spotId,
+      spot_ids: selected.map((s) => s.id),
       min_wind_ms: minWind,
       max_days_ahead: daysAhead,
       weekends_only: weekendsOnly,
@@ -60,6 +102,7 @@ export function AlertsModal({ session, spots, onClose }: Props) {
     });
     setSaving(false);
     if (error) { setErr(error.message); return; }
+    setSelected([]);
     loadAlerts();
   }
 
@@ -75,8 +118,8 @@ export function AlertsModal({ session, spots, onClose }: Props) {
     setAlerts((a) => a.map((x) => x.id === id ? { ...x, active } : x));
   }
 
-  function spotName(id: string) {
-    return spots.find((s) => s.id === id)?.name ?? id;
+  function spotNames(ids: string[]): string {
+    return ids.map((id) => names[id] ?? id).join(", ");
   }
 
   return (
@@ -97,7 +140,7 @@ export function AlertsModal({ session, spots, onClose }: Props) {
               {alerts.map((a) => (
                 <div key={a.id} className="pending-spot" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>{spotName(a.spot_id)}</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>{spotNames(a.spot_ids)}</div>
                     <div className="muted small">
                       min {a.min_wind_ms} m/s · do {a.max_days_ahead} dní
                       {a.weekends_only ? " · jen víkendy" : ""}
@@ -131,12 +174,31 @@ export function AlertsModal({ session, spots, onClose }: Props) {
               + Nový alert
             </div>
 
-            <label className="field-label">Spot</label>
-            <select className="text-input" value={spotId} onChange={(e) => setSpotId(e.target.value)}>
-              {approvedSpots.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <label className="field-label">Spoty <span className="muted small">— hledej a přidej víc</span></label>
+            {selected.length > 0 && (
+              <div className="preset-chips" style={{ marginTop: 6 }}>
+                {selected.map((s) => (
+                  <button key={s.id} type="button" className="chip active" onClick={() => removeSpot(s.id)}>
+                    {s.name} ✕
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              className="text-input"
+              placeholder="Hledej spot podle názvu…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {results.length > 0 && (
+              <div className="search-results">
+                {results.map((r) => (
+                  <button key={r.id} className="search-result" onClick={() => addSpot(r)}>
+                    {r.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <label className="field-label" style={{ marginTop: 12 }}>
               Minimální vítr: <b>{minWind} m/s</b>
@@ -182,10 +244,10 @@ export function AlertsModal({ session, spots, onClose }: Props) {
             <button
               className="btn"
               onClick={addAlert}
-              disabled={saving || !spotId}
+              disabled={saving || selected.length === 0}
               style={{ marginTop: 14, width: "100%" }}
             >
-              {saving ? "Ukládám…" : "Přidat alert"}
+              {saving ? "Ukládám…" : selected.length > 1 ? `Přidat alert (${selected.length} spotů)` : "Přidat alert"}
             </button>
           </div>
         </div>

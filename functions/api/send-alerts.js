@@ -120,8 +120,8 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
 }
 
-function buildEmail(spotName, windguruUrl, windows, unsubscribeToken, siteUrl) {
-  const unsubUrl = `${siteUrl}/api/unsubscribe?token=${unsubscribeToken}`;
+// Sekce pro jeden spot (název + tabulka oken + odkaz na Windguru).
+function emailSection(spotName, windguruUrl, windows) {
   const rows = windows.map(w =>
     `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${formatDate(w.date)}</td>
@@ -130,6 +130,30 @@ function buildEmail(spotName, windguruUrl, windows, unsubscribeToken, siteUrl) {
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">nárazy ${w.maxGust.toFixed(1)}</td>
     </tr>`
   ).join("");
+  return `<div style="margin-bottom:22px;">
+    <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:8px;">${spotName}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+      <thead>
+        <tr style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;">
+          <th style="padding:6px 12px;text-align:left;">Den</th>
+          <th style="padding:6px 12px;text-align:left;">Délka</th>
+          <th style="padding:6px 12px;text-align:left;">Vítr</th>
+          <th style="padding:6px 12px;text-align:left;"></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${windguruUrl ? `<a href="${windguruUrl}" style="display:inline-block;margin-top:10px;padding:8px 14px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-size:0.85rem;">Ověřit na Windguru ↗</a>` : ""}
+  </div>`;
+}
+
+// Jeden e-mail pro celý alert: items = [{ spot, windows }].
+function buildEmail(items, unsubscribeToken, siteUrl) {
+  const unsubUrl = `${siteUrl}/api/unsubscribe?token=${unsubscribeToken}`;
+  const headline = items.length === 1
+    ? `Okno na ${items[0].spot.name} se blíží!`
+    : `${items.length} spotů má vhodné podmínky!`;
+  const sections = items.map(it => emailSection(it.spot.name, it.spot.windguru_url, it.windows)).join("");
 
   return `<!DOCTYPE html>
 <html lang="cs">
@@ -138,21 +162,10 @@ function buildEmail(spotName, windguruUrl, windows, unsubscribeToken, siteUrl) {
   <div style="max-width:520px;margin:32px auto;background:#1e293b;border-radius:16px;overflow:hidden;">
     <div style="background:#0ea5e9;padding:24px 28px;">
       <div style="font-size:1.5rem;font-weight:700;color:#fff;">🪁 WingSpot</div>
-      <div style="color:#e0f2fe;margin-top:4px;font-size:0.95rem;">Okno na ${spotName} se blíží!</div>
+      <div style="color:#e0f2fe;margin-top:4px;font-size:0.95rem;">${headline}</div>
     </div>
     <div style="padding:24px 28px;">
-      <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
-        <thead>
-          <tr style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;">
-            <th style="padding:6px 12px;text-align:left;">Den</th>
-            <th style="padding:6px 12px;text-align:left;">Délka</th>
-            <th style="padding:6px 12px;text-align:left;">Vítr</th>
-            <th style="padding:6px 12px;text-align:left;"></th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      ${windguruUrl ? `<a href="${windguruUrl}" style="display:inline-block;margin-top:20px;padding:10px 18px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-size:0.9rem;">Ověřit na Windguru ↗</a>` : ""}
+      ${sections}
     </div>
     <div style="padding:16px 28px;border-top:1px solid #2a2a2a;font-size:0.78rem;color:#64748b;">
       WingSpot · předpověď je orientační, vždy posuď podmínky na místě sám.<br>
@@ -195,14 +208,16 @@ export async function onRequest(context) {
   }
 
   const alerts = await sbGet(
-    `${supabaseUrl}/rest/v1/alerts?active=eq.true&select=id,user_email,spot_id,min_wind_ms,max_days_ahead,weekends_only,last_sent_at,unsubscribe_token`,
+    `${supabaseUrl}/rest/v1/alerts?active=eq.true&select=id,user_email,spot_ids,spot_id,min_wind_ms,max_days_ahead,weekends_only,last_sent_at,unsubscribe_token`,
     serviceKey
   );
   if (!alerts.length) {
     return new Response(JSON.stringify({ sent: 0, message: "no active alerts" }), { status: 200, headers: cors });
   }
 
-  const spotIds   = [...new Set(alerts.map(a => a.spot_id))];
+  // spot_ids je pole; fallback na legacy spot_id pro staré řádky
+  const alertSpotIds = (a) => (a.spot_ids?.length ? a.spot_ids : (a.spot_id ? [a.spot_id] : []));
+  const spotIds   = [...new Set(alerts.flatMap(alertSpotIds))];
   const spotsData = await sbGet(
     `${supabaseUrl}/rest/v1/spots?id=in.(${spotIds.map(id => `"${id}"`).join(",")})&select=id,name,lat,lon,windguru_url,good_dirs,bad_dirs`,
     serviceKey
@@ -217,7 +232,8 @@ export async function onRequest(context) {
     catch (e) { forecastErrors[id] = e.message; }
   }));
 
-  const emailsToSend = {}, alertsToMark = [], skipped = [];
+  // Jeden e-mail na ALERT (ne na spot): seskup okna všech spotů alertu.
+  const mails = [], alertsToMark = [], skipped = [];
 
   for (const alert of alerts) {
     if (!testMode && alert.last_sent_at) {
@@ -225,46 +241,48 @@ export async function onRequest(context) {
       if (age < 20 * 60 * 60 * 1000) { skipped.push({ id: alert.id, reason: "cooldown" }); continue; }
     }
 
-    const forecast = forecastMap[alert.spot_id];
-    if (!forecast) { skipped.push({ id: alert.id, reason: `no forecast: ${forecastErrors[alert.spot_id] ?? "unknown"}` }); continue; }
+    const items = [];
+    for (const sid of alertSpotIds(alert)) {
+      const forecast = forecastMap[sid];
+      const spot = spotMap[sid];
+      if (!forecast || !spot) continue;
+      const windows = testMode
+        ? [{ date: new Date().toISOString().slice(0, 10), hours: 4, avgWind: alert.min_wind_ms + 1, maxGust: alert.min_wind_ms + 2 }]
+        : checkAlert(forecast, alert, spot.good_dirs ?? [], spot.bad_dirs ?? []);
+      if (windows.length) items.push({ spot, windows });
+    }
 
-    const spot = spotMap[alert.spot_id];
-    const windows = testMode
-      ? [{ date: new Date().toISOString().slice(0, 10), hours: 4, avgWind: alert.min_wind_ms + 1, maxGust: alert.min_wind_ms + 2 }]
-      : checkAlert(forecast, alert, spot.good_dirs ?? [], spot.bad_dirs ?? []);
-
-    if (!windows.length) { skipped.push({ id: alert.id, reason: "no matching wind window" }); continue; }
-
-    if (!emailsToSend[alert.user_email]) emailsToSend[alert.user_email] = [];
-    emailsToSend[alert.user_email].push({ spot, windows, alertId: alert.id, unsubscribeToken: alert.unsubscribe_token });
+    if (!items.length) { skipped.push({ id: alert.id, reason: "no matching wind window" }); continue; }
+    mails.push({ email: alert.user_email, items, alertId: alert.id, unsubscribeToken: alert.unsubscribe_token });
   }
 
   let sent = 0;
   const emailErrors = [];
-  for (const [email, items] of Object.entries(emailsToSend)) {
-    for (const { spot, windows, alertId, unsubscribeToken } of items) {
-      try {
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: env.RESEND_FROM ?? "WingSpot <onboarding@resend.dev>",
-            to:   [email],
-            subject: testMode
-              ? `🧪 WingSpot test – ${spot.name}`
-              : `🌬️ Okno na ${spot.name} – ${windows[0] ? formatDate(windows[0].date) : ""}`,
-            html: buildEmail(spot.name, spot.windguru_url, windows, unsubscribeToken, siteUrl),
-          }),
-        });
-        if (res.ok) {
-          sent++;
-          if (!testMode) alertsToMark.push(alertId);
-        } else {
-          emailErrors.push({ email, status: res.status, body: await res.text() });
-        }
-      } catch (e) {
-        emailErrors.push({ email, error: e.message });
+  for (const { email, items, alertId, unsubscribeToken } of mails) {
+    const subject = testMode
+      ? `🧪 WingSpot test – ${items.length} spotů`
+      : items.length === 1
+        ? `🌬️ Okno na ${items[0].spot.name} – ${items[0].windows[0] ? formatDate(items[0].windows[0].date) : ""}`
+        : `🌬️ ${items.length} spotů má vítr!`;
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: env.RESEND_FROM ?? "WingSpot <onboarding@resend.dev>",
+          to:   [email],
+          subject,
+          html: buildEmail(items, unsubscribeToken, siteUrl),
+        }),
+      });
+      if (res.ok) {
+        sent++;
+        if (!testMode) alertsToMark.push(alertId);
+      } else {
+        emailErrors.push({ email, status: res.status, body: await res.text() });
       }
+    } catch (e) {
+      emailErrors.push({ email, error: e.message });
     }
   }
 

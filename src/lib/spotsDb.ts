@@ -50,6 +50,41 @@ export interface NearbySpotMatch {
   lon: number;
 }
 
+// Hledání schválených spotů podle názvu (našeptávač) — pro alerty i jinde.
+export async function searchApprovedSpots(query: string, limit = 8): Promise<NearbySpotMatch[]> {
+  if (!supabaseEnabled || !supabase) return [];
+  const q = query.trim();
+  if (q.length < 2) return [];
+  try {
+    const res = await supabase
+      .from("spots")
+      .select("id,name,lat,lon")
+      .eq("status", "approved")
+      .ilike("name", `%${q}%`)
+      .limit(limit);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data as NearbySpotMatch[];
+  } catch {
+    return [];
+  }
+}
+
+// Načte názvy spotů podle ID (pro zobrazení uložených alertů, kde spot
+// nemusí být v aktuálně načteném okruhu kolem domova).
+export async function getSpotsByIds(ids: string[]): Promise<NearbySpotMatch[]> {
+  if (!supabaseEnabled || !supabase || ids.length === 0) return [];
+  try {
+    const res = await supabase
+      .from("spots")
+      .select("id,name,lat,lon")
+      .in("id", ids);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data as NearbySpotMatch[];
+  } catch {
+    return [];
+  }
+}
+
 // Najde už existující SCHVÁLENÉ spoty pro detekci duplicit při přidávání:
 // geo-dotaz do `km` km od zadané polohy + shoda podle názvu (ILIKE).
 // Stejný zdroj jako zbytek appky (tabulka spots, status=approved).
