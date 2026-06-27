@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Settings } from "../lib/settings";
-import { HOME_PRESETS } from "../lib/settings";
+import { loadRecentLocations, addRecentLocation } from "../lib/settings";
+import type { RecentLocation } from "../lib/settings";
 import { searchPlace } from "../lib/geo";
 import type { GeoResult } from "../lib/geo";
 
@@ -21,22 +22,76 @@ export function SettingsPanel({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeoResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [noResults, setNoResults] = useState(false);
+  const [recent, setRecent] = useState<RecentLocation[]>(() => loadRecentLocations());
+  const [geoState, setGeoState] = useState<"idle" | "loading" | "error">("idle");
+  const [geoMsg, setGeoMsg] = useState("");
 
   const set = (patch: Partial<Settings>) => onChange({ ...settings, ...patch });
+
+  // Vybrání lokace z vyhledávání → nastav domov + ulož do posledních
+  function pickLocation(name: string, lat: number, lon: number, country?: string) {
+    set({ homeName: name, homeLat: lat, homeLon: lon });
+    setRecent(addRecentLocation({ name, lat, lon, country }));
+    setQuery("");
+    setResults([]);
+    setNoResults(false);
+  }
+
+  // „Použít moji polohu" přes prohlížečové Geolocation API
+  function useMyLocation() {
+    if (!("geolocation" in navigator)) {
+      setGeoState("error");
+      setGeoMsg("Tvůj prohlížeč polohu nepodporuje. Použij vyhledávání níže.");
+      return;
+    }
+    setGeoState("loading");
+    setGeoMsg("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        // Reverzní geokódování (pěkný název) doplníme v BLOKU B přes ORS;
+        // zatím ukážeme „Moje poloha" se souřadnicemi.
+        set({
+          homeName: `Moje poloha (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`,
+          homeLat: latitude,
+          homeLon: longitude,
+        });
+        setGeoState("idle");
+      },
+      (err) => {
+        setGeoState("error");
+        setGeoMsg(
+          err.code === err.PERMISSION_DENIED
+            ? "Přístup k poloze byl odmítnut. Povol ho v prohlížeči, nebo použij vyhledávání."
+            : "Polohu se nepodařilo zjistit. Použij vyhledávání níže."
+        );
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+  }
 
   useEffect(() => {
     if (query.trim().length < 2) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
+      setNoResults(false);
       return;
     }
+    setSearching(true);
     const id = setTimeout(async () => {
       try {
-        setResults(await searchPlace(query));
+        const found = await searchPlace(query);
+        setResults(found);
+        setNoResults(found.length === 0);
       } catch {
         setResults([]);
+        setNoResults(true);
+      } finally {
+        setSearching(false);
       }
-    }, 350);
+    }, 300);
     return () => clearTimeout(id);
   }, [query]);
 
@@ -55,43 +110,62 @@ export function SettingsPanel({
           <section>
             <label className="field-label">Odkud vyrážím</label>
             <div className="home-current">📍 {settings.homeName}</div>
-            <div className="preset-chips">
-              {HOME_PRESETS.map((p) => (
-                <button
-                  key={p.name}
-                  className={
-                    "chip" + (settings.homeName === p.name ? " active" : "")
-                  }
-                  onClick={() =>
-                    set({ homeName: p.name, homeLat: p.lat, homeLon: p.lon })
-                  }
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
+
+            <button
+              className="btn btn-location"
+              onClick={useMyLocation}
+              disabled={geoState === "loading"}
+            >
+              {geoState === "loading" ? "Zjišťuji polohu…" : "📡 Použít moji polohu"}
+            </button>
+            {geoState === "error" && (
+              <p className="warn-text small">⚠ {geoMsg}</p>
+            )}
+
             <input
               className="text-input"
-              placeholder="…nebo napiš jiné město / obec"
+              placeholder="Hledej město nebo obec…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              style={{ marginTop: 10 }}
             />
+            {searching && <div className="hint muted small">Hledám…</div>}
+            {noResults && !searching && (
+              <div className="hint muted small">Žádné výsledky. Zkus jiný název.</div>
+            )}
             {results.length > 0 && (
               <div className="search-results">
                 {results.map((r, i) => (
                   <button
                     key={i}
                     className="search-result"
-                    onClick={() => {
-                      set({ homeName: r.name, homeLat: r.lat, homeLon: r.lon });
-                      setQuery("");
-                      setResults([]);
-                    }}
+                    onClick={() => pickLocation(r.name, r.lat, r.lon, r.country)}
                   >
                     {r.name} <span className="muted">({r.country})</span>
                   </button>
                 ))}
               </div>
+            )}
+
+            {recent.length > 0 && (
+              <>
+                <div className="hint muted small" style={{ marginTop: 10 }}>
+                  Naposledy hledané:
+                </div>
+                <div className="preset-chips">
+                  {recent.map((r) => (
+                    <button
+                      key={r.name}
+                      className={
+                        "chip" + (settings.homeName === r.name ? " active" : "")
+                      }
+                      onClick={() => pickLocation(r.name, r.lat, r.lon, r.country)}
+                    >
+                      {r.name}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </section>
 

@@ -12,18 +12,6 @@ export interface Settings {
   dayEndHour: number; // do kolika hodin (např. 20:00)
 }
 
-export const HOME_PRESETS: { name: string; lat: number; lon: number }[] = [
-  { name: "Praha", lat: 50.0755, lon: 14.4378 },
-  { name: "Brno", lat: 49.1951, lon: 16.6068 },
-  { name: "Ostrava", lat: 49.8209, lon: 18.2625 },
-  { name: "Plzeň", lat: 49.7384, lon: 13.3736 },
-  { name: "Liberec", lat: 50.7663, lon: 15.0543 },
-  { name: "Ústí nad Labem", lat: 50.661, lon: 14.0322 },
-  { name: "Hradec Králové", lat: 50.2092, lon: 15.8328 },
-  { name: "České Budějovice", lat: 48.9747, lon: 14.4744 },
-  { name: "Olomouc", lat: 49.5938, lon: 17.2509 },
-];
-
 export const DEFAULT_SETTINGS: Settings = {
   homeName: "Praha",
   homeLat: 50.0755,
@@ -73,4 +61,37 @@ export function saveFavorites(ids: string[]) {
   } catch {
     // ignore
   }
+}
+
+// ----- Posledních 5 vyhledaných lokací -----
+// Ukládají se JEN lokace vybrané z vyhledávání (ne geolokace, ne výchozí).
+export interface RecentLocation {
+  name: string;
+  lat: number;
+  lon: number;
+  country?: string;
+}
+
+const RECENT_KEY = "wingspot-recent-locations-v1";
+const RECENT_MAX = 5;
+
+export function loadRecentLocations(): RecentLocation[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Přidá lokaci na začátek, odstraní duplicitu podle názvu, ořízne na 5.
+export function addRecentLocation(loc: RecentLocation): RecentLocation[] {
+  const prev = loadRecentLocations().filter((r) => r.name !== loc.name);
+  const next = [loc, ...prev].slice(0, RECENT_MAX);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+  return next;
 }

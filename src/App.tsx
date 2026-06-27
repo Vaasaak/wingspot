@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { SPOTS } from "./data/spots";
 import type { Spot } from "./data/spots";
@@ -102,6 +102,16 @@ export default function App() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { void load(false); }, []);
+
+  // Po změně domovské lokace / max vzdálenosti znovu načti spoty v okruhu z DB
+  // (geo-dotaz spots_within bere lat/lon/km). Debounce, ať slider nepálí dotazy.
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    const id = setTimeout(() => { void load(false); }, 700);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.homeLat, settings.homeLon, settings.maxDistanceKm]);
 
   // ulož nastavení a oblíbené při změně (localStorage vždy, DB když přihlášen)
   useEffect(() => {
