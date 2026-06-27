@@ -1,4 +1,5 @@
 import type { Rating } from "../lib/scoring";
+import type { DistanceMetric } from "../lib/settings";
 import { RATING_META, confidenceLabel } from "../lib/ui";
 import {
   fmtWeekdayLong,
@@ -7,7 +8,7 @@ import {
   fmtMs,
   isToday,
 } from "../lib/format";
-import { googleMapsNavUrl } from "../lib/geo";
+import { googleMapsNavUrl, distanceLabel } from "../lib/geo";
 
 export interface WhereOption {
   final: number; // pořadové skóre (kvalita × vzdálenost)
@@ -21,6 +22,8 @@ export interface WhereOption {
   windowEnd: number | null;
   avgMs: number;
   distanceKm: number;
+  driveKm?: number;
+  driveMin?: number;
   rating: Rating;
   confidence: number;
 }
@@ -29,11 +32,13 @@ export function WhereToGo({
   options,
   homeLat,
   homeLon,
+  distanceMetric,
   onSelectDay,
 }: {
   options: WhereOption[];
   homeLat: number;
   homeLon: number;
+  distanceMetric: DistanceMetric;
   onSelectDay: (date: string) => void;
 }) {
   return (
@@ -77,7 +82,11 @@ export function WhereToGo({
                   </div>
                   <div className="wtg-sub">
                     {fmtWindow(o.windowStart, o.windowEnd)} · {fmtMs(o.avgMs)} ·{" "}
-                    {o.distanceKm} km
+                    {distanceLabel(distanceMetric, {
+                      km: o.distanceKm,
+                      driveKm: o.driveKm,
+                      driveMin: o.driveMin,
+                    })}
                   </div>
                   <div className="wtg-meta">
                     <span className="rating-chip" style={{ background: meta.color }}>

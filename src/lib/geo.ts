@@ -1,3 +1,5 @@
+import type { DistanceMetric } from "./settings";
+
 // Výpočet vzdálenosti mezi dvěma GPS body (vzdušnou čarou, v km).
 // Tzv. haversine vzorec.
 
@@ -15,6 +17,49 @@ export function distanceKm(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+// ----- Metrika vzdálenosti (vzdušná čára / km autem / čas autem) -----
+
+export interface DistanceInfo {
+  km: number; // vzdušná čára (vždy)
+  driveKm?: number; // vzdálenost autem (jen když je načtena z ORS)
+  driveMin?: number; // čas autem v minutách (jen když je načten z ORS)
+}
+
+// Čas autem ve čitelném formátu: "31 min" / "1 h 52 min".
+export function fmtDriveMin(min: number): string {
+  const m = Math.round(min);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${h} h ${r} min` : `${h} h`;
+}
+
+// Text vzdálenosti na kartě spotu podle zvolené metriky.
+// U auto-metrik ukáže km i čas autem; vzdušnou čáru jako fallback.
+export function distanceLabel(metric: DistanceMetric, info: DistanceInfo): string {
+  if (metric !== "straight" && info.driveKm != null && info.driveMin != null) {
+    return `${Math.round(info.driveKm)} km · ~${fmtDriveMin(info.driveMin)} autem`;
+  }
+  return `${info.km} km`;
+}
+
+// Číselná hodnota pro řazení/filtrování podle metriky.
+// Když auto-data ještě nejsou, odhadne z vzdušné čáry (80 km/h pro čas).
+export function metricValue(metric: DistanceMetric, info: DistanceInfo): number {
+  if (metric === "drive_km") return info.driveKm ?? info.km;
+  if (metric === "drive_time") return info.driveMin ?? (info.km / 80) * 60;
+  return info.km;
+}
+
+// Strop pro danou metriku (km nebo minuty).
+export function metricMax(
+  metric: DistanceMetric,
+  maxDistanceKm: number,
+  maxDriveMin: number
+): number {
+  return metric === "drive_time" ? maxDriveMin : maxDistanceKm;
 }
 
 // Odkaz na navigaci autem z domovského místa na spot.

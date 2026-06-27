@@ -1,6 +1,7 @@
 import type { Spot } from "../data/spots";
 // Spot import is used in onReport callback type
 import type { DayEval } from "../lib/scoring";
+import type { DistanceMetric } from "../lib/settings";
 import { fmtWeekdayLong, fmtDayMonth, fmtClock } from "../lib/format";
 import { SpotRow } from "./SpotRow";
 
@@ -8,12 +9,15 @@ export interface SpotDay {
   spot: Spot;
   day: DayEval;
   distanceKm: number;
+  driveKm?: number;
+  driveMin?: number;
 }
 
 export function DayDetail({
   date,
   spotDays,
   minWindMs,
+  distanceMetric,
   favorites,
   onToggleFav,
   onReport,
@@ -21,6 +25,7 @@ export function DayDetail({
   date: string;
   spotDays: SpotDay[];
   minWindMs: number;
+  distanceMetric: DistanceMetric;
   favorites: string[];
   onToggleFav: (id: string) => void;
   onReport?: (spot: Spot) => void;
@@ -59,12 +64,15 @@ export function DayDetail({
       </div>
 
       <div className="spot-list">
-        {spotDays.map(({ spot, day, distanceKm }) => (
+        {spotDays.map(({ spot, day, distanceKm, driveKm, driveMin }) => (
           <SpotRow
             key={spot.id}
             spot={spot}
             day={day}
             distanceKm={distanceKm}
+            driveKm={driveKm}
+            driveMin={driveMin}
+            distanceMetric={distanceMetric}
             minWindMs={minWindMs}
             isFavorite={favorites.includes(spot.id)}
             onToggleFav={() => onToggleFav(spot.id)}

@@ -14,7 +14,10 @@ import { fetchForecasts } from "./lib/weather";
 import type { SpotForecast } from "./lib/weather";
 import { evaluateSpot, distancePenalty } from "./lib/scoring";
 import type { Rating } from "./lib/scoring";
-import { distanceKm } from "./lib/geo";
+import { distanceKm, metricValue, metricMax } from "./lib/geo";
+import type { DistanceInfo } from "./lib/geo";
+import { fetchDriveMatrix } from "./lib/drivematrix";
+import type { DriveMatrix } from "./lib/drivematrix";
 import { Calendar } from "./components/Calendar";
 import type { CalendarDay } from "./components/Calendar";
 import { DayDetail } from "./components/DayDetail";
@@ -35,10 +38,20 @@ import {
 } from "./lib/profile";
 import type { Session } from "@supabase/supabase-js";
 
+// Poloměr (km) pro geo-dotaz na spoty. U metriky „čas autem" převedeme minuty
+// na velkorysý km poloměr (90 km/h), ať nevypadnou daleké-ale-rychlé spoty.
+function prefilterKm(s: Settings): number {
+  if (s.distanceMetric === "drive_time") {
+    return Math.min(600, Math.round((s.maxDriveMin / 60) * 90));
+  }
+  return s.maxDistanceKm;
+}
+
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites());
   const [spots, setSpots] = useState<Spot[]>(SPOTS); // fallback hned, DB pak
+  const [driveData, setDriveData] = useState<DriveMatrix>({}); // vzdálenost/čas autem (ORS)
   const [forecasts, setForecasts] = useState<SpotForecast[] | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,7 +101,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const { spots: loaded } = await loadSpots({ lat: settings.homeLat, lon: settings.homeLon, km: settings.maxDistanceKm });
+      const { spots: loaded } = await loadSpots({ lat: settings.homeLat, lon: settings.homeLon, km: prefilterKm(settings) });
       setSpots(loaded);
       const res = await fetchForecasts(loaded, force);
       setForecasts(res.data);
@@ -103,7 +116,7 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { void load(false); }, []);
 
-  // Po změně domovské lokace / max vzdálenosti znovu načti spoty v okruhu z DB
+  // Po změně domovské lokace / poloměru znovu načti spoty v okruhu z DB
   // (geo-dotaz spots_within bere lat/lon/km). Debounce, ať slider nepálí dotazy.
   const didMountRef = useRef(false);
   useEffect(() => {
@@ -111,7 +124,34 @@ export default function App() {
     const id = setTimeout(() => { void load(false); }, 700);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.homeLat, settings.homeLon, settings.maxDistanceKm]);
+  }, [settings.homeLat, settings.homeLon, prefilterKm(settings)]);
+
+  // Vzdálenost/čas autem: když je zvolená auto-metrika, dotáhni z ORS přes
+  // funkci /api/drivematrix pro ~25 nejbližších kandidátů (vzdušně). Šetrně —
+  // přepočítáváme jen když se změní zaokrouhlená poloha nebo množina kandidátů.
+  const driveKeyRef = useRef("");
+  useEffect(() => {
+    if (settings.distanceMetric === "straight") {
+      driveKeyRef.current = "";
+      return;
+    }
+    const cands = spots
+      .map((s) => ({ s, d: distanceKm(settings.homeLat, settings.homeLon, s.lat, s.lon) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 25)
+      .map((x) => ({ id: x.s.id, lat: x.s.lat, lon: x.s.lon }));
+    if (!cands.length) return;
+    const key =
+      `${settings.homeLat.toFixed(2)},${settings.homeLon.toFixed(2)}:` +
+      cands.map((c) => c.id).sort().join(",");
+    if (key === driveKeyRef.current) return;
+    driveKeyRef.current = key;
+    let cancelled = false;
+    fetchDriveMatrix({ lat: settings.homeLat, lon: settings.homeLon }, cands).then((m) => {
+      if (!cancelled) setDriveData(m);
+    });
+    return () => { cancelled = true; };
+  }, [settings.distanceMetric, settings.homeLat, settings.homeLon, spots]);
 
   // ulož nastavení a oblíbené při změně (localStorage vždy, DB když přihlášen)
   useEffect(() => {
@@ -133,19 +173,34 @@ export default function App() {
   const derived = useMemo(() => {
     if (!forecasts) return null;
 
-    // spoty v dosahu + vzdálenost
+    const metric = settings.distanceMetric;
+    const maxVal = metricMax(metric, settings.maxDistanceKm, settings.maxDriveMin);
+    const sdInfo = (sd: SpotDay): DistanceInfo => ({
+      km: sd.distanceKm, driveKm: sd.driveKm, driveMin: sd.driveMin,
+    });
+
+    // vzdálenost (vzdušná čára + případně auto z ORS) pro každý spot
+    const infoFor = (spot: Spot): DistanceInfo => {
+      const dr = driveData[spot.id];
+      return {
+        km: distanceKm(settings.homeLat, settings.homeLon, spot.lat, spot.lon),
+        driveKm: dr ? dr.distance_m / 1000 : undefined,
+        driveMin: dr ? dr.duration_s / 60 : undefined,
+      };
+    };
+
+    // spoty v dosahu podle zvolené metriky
     const fcById = new Map(forecasts.map((f) => [f.spotId, f]));
-    const inRange = spots.map((spot) => ({
-      spot,
-      dist: distanceKm(settings.homeLat, settings.homeLon, spot.lat, spot.lon),
-    })).filter((x) => x.dist <= settings.maxDistanceKm);
+    const inRange = spots
+      .map((spot) => ({ spot, info: infoFor(spot) }))
+      .filter((x) => metricValue(metric, x.info) <= maxVal);
 
     // vyhodnocení každého spotu
     const evals = inRange
-      .map(({ spot, dist }) => {
+      .map(({ spot, info }) => {
         const fc = fcById.get(spot.id);
         if (!fc) return null;
-        return { spot, dist, evalResult: evaluateSpot(spot, fc, settings) };
+        return { spot, info, evalResult: evaluateSpot(spot, fc, settings) };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
@@ -158,21 +213,19 @@ export default function App() {
 
     for (const date of dates) {
       const spotDays: SpotDay[] = evals
-        .map(({ spot, dist, evalResult }) => {
+        .map(({ spot, info, evalResult }): SpotDay | null => {
           const day = evalResult.days.find((d) => d.date === date);
-          return day ? { spot, day, distanceKm: dist } : null;
+          return day
+            ? { spot, day, distanceKm: info.km, driveKm: info.driveKm, driveMin: info.driveMin }
+            : null;
         })
         .filter((x): x is SpotDay => x !== null)
-        // finální pořadí = kvalita (0–1) × vzdálenostní penalizace:
+        // finální pořadí = kvalita (0–1) × penalizace vzdálenosti (zvolená metrika):
         // bližší spot při srovnatelné kvalitě vyhraje, ale vzdálenost nikdy
         // neudělá z dobrého spotu špatný (jen rozhoduje mezi srovnatelnými).
         .sort((a, b) => {
-          const fa =
-            a.day.qualityScore *
-            distancePenalty(a.distanceKm, settings.maxDistanceKm);
-          const fb =
-            b.day.qualityScore *
-            distancePenalty(b.distanceKm, settings.maxDistanceKm);
+          const fa = a.day.qualityScore * distancePenalty(metricValue(metric, sdInfo(a)), maxVal);
+          const fb = b.day.qualityScore * distancePenalty(metricValue(metric, sdInfo(b)), maxVal);
           return fb - fa;
         });
 
@@ -205,8 +258,7 @@ export default function App() {
       for (const sd of spotDaysByDate[date]) {
         if (sd.day.rating !== "good" && sd.day.rating !== "great") continue;
         const final =
-          sd.day.qualityScore *
-          distancePenalty(sd.distanceKm, settings.maxDistanceKm);
+          sd.day.qualityScore * distancePenalty(metricValue(metric, sdInfo(sd)), maxVal);
         const prev = bestPerSpot.get(sd.spot.id);
         if (!prev || final > prev.final) {
           bestPerSpot.set(sd.spot.id, {
@@ -221,6 +273,8 @@ export default function App() {
             windowEnd: sd.day.windowEnd,
             avgMs: sd.day.windowAvgMs,
             distanceKm: sd.distanceKm,
+            driveKm: sd.driveKm,
+            driveMin: sd.driveMin,
             rating: sd.day.rating,
             confidence: sd.day.confidence,
           });
@@ -232,7 +286,7 @@ export default function App() {
       .slice(0, 3);
 
     return { dates, spotDaysByDate, calendar, topOptions };
-  }, [forecasts, settings, spots]);
+  }, [forecasts, settings, spots, driveData]);
 
   // vyber výchozí den
   useEffect(() => {
@@ -328,6 +382,7 @@ export default function App() {
             options={derived.topOptions}
             homeLat={settings.homeLat}
             homeLon={settings.homeLon}
+            distanceMetric={settings.distanceMetric}
             onSelectDay={setSelectedDate}
           />
 
@@ -360,6 +415,7 @@ export default function App() {
               date={selectedDate}
               spotDays={derived.spotDaysByDate[selectedDate]}
               minWindMs={settings.minWindMs}
+              distanceMetric={settings.distanceMetric}
               favorites={favorites}
               onToggleFav={toggleFav}
               onReport={setReportingSpot}

@@ -171,18 +171,58 @@ export function SettingsPanel({
 
           {/* VZDÁLENOST */}
           <section>
-            <label className="field-label">
-              Maximální vzdálenost: <b>{settings.maxDistanceKm} km</b>
-            </label>
-            <input
-              type="range"
-              min={25}
-              max={600}
-              step={25}
-              value={settings.maxDistanceKm}
-              onChange={(e) => set({ maxDistanceKm: Number(e.target.value) })}
-            />
-            <div className="hint muted small">Vzdušnou čarou od domovského místa.</div>
+            <label className="field-label">Řadit podle</label>
+            <div className="preset-chips">
+              {([
+                ["straight", "Vzdušná čára"],
+                ["drive_km", "Km autem"],
+                ["drive_time", "Čas autem"],
+              ] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  className={"chip" + (settings.distanceMetric === val ? " active" : "")}
+                  onClick={() => set({ distanceMetric: val })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {settings.distanceMetric === "drive_time" ? (
+              <>
+                <label className="field-label">
+                  Max čas autem: <b>{settings.maxDriveMin} min</b>
+                </label>
+                <input
+                  type="range"
+                  min={30}
+                  max={360}
+                  step={15}
+                  value={settings.maxDriveMin}
+                  onChange={(e) => set({ maxDriveMin: Number(e.target.value) })}
+                />
+                <div className="hint muted small">Maximální doba jízdy autem na spot.</div>
+              </>
+            ) : (
+              <>
+                <label className="field-label">
+                  Maximální vzdálenost: <b>{settings.maxDistanceKm} km</b>
+                </label>
+                <input
+                  type="range"
+                  min={25}
+                  max={600}
+                  step={25}
+                  value={settings.maxDistanceKm}
+                  onChange={(e) => set({ maxDistanceKm: Number(e.target.value) })}
+                />
+                <div className="hint muted small">
+                  {settings.distanceMetric === "drive_km"
+                    ? "Vzdálenost po silnici autem."
+                    : "Vzdušnou čarou od domovského místa."}
+                </div>
+              </>
+            )}
           </section>
 
           {/* VÍTR */}

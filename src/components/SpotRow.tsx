@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import { SquareParking, Droplets, Utensils, Store, X } from "lucide-react";
 import type { Spot } from "../data/spots";
 import type { DayEval } from "../lib/scoring";
+import type { DistanceMetric } from "../lib/settings";
+import { distanceLabel } from "../lib/geo";
 import { fmtMs, fmtWindow } from "../lib/format";
 import { RATING_META, confidenceLabel } from "../lib/ui";
 import { HourlyChart } from "./HourlyChart";
@@ -19,6 +21,9 @@ export function SpotRow({
   spot,
   day,
   distanceKm,
+  driveKm,
+  driveMin,
+  distanceMetric,
   minWindMs,
   isFavorite,
   onToggleFav,
@@ -27,6 +32,9 @@ export function SpotRow({
   spot: Spot;
   day: DayEval;
   distanceKm: number;
+  driveKm?: number;
+  driveMin?: number;
+  distanceMetric: DistanceMetric;
   minWindMs: number;
   isFavorite: boolean;
   onToggleFav: () => void;
@@ -52,7 +60,9 @@ export function SpotRow({
         <div className="spot-info">
           <div className="spot-name-line">
             <span className="spot-name">{spot.name}</span>
-            <span className="spot-dist">{distanceKm} km</span>
+            <span className="spot-dist">
+              {distanceLabel(distanceMetric, { km: distanceKm, driveKm, driveMin })}
+            </span>
             {spot.region === "DE" && <span className="flag" title="Německo">🇩🇪</span>}
             {day.outlook && <span className="outlook-tag">výhled</span>}
             {day.offshoreBlocked && (

@@ -1,11 +1,16 @@
 // Nastavení appky – ukládá se do prohlížeče (localStorage), takže
 // zůstane zachované i po zavření.
 
+// Podle čeho se spoty řadí/filtrují: vzdušná čára, km autem, čas autem.
+export type DistanceMetric = "straight" | "drive_km" | "drive_time";
+
 export interface Settings {
   homeName: string;
   homeLat: number;
   homeLon: number;
-  maxDistanceKm: number; // jak daleko jsem ochotný jet
+  maxDistanceKm: number; // jak daleko jsem ochotný jet (km – pro vzdušnou čáru i km autem)
+  maxDriveMin: number; // strop času autem (min – jen pro metriku "drive_time")
+  distanceMetric: DistanceMetric; // jak měřit vzdálenost
   minWindMs: number; // od kolika m/s je to "dost větru" (výchozí 6)
   minSessionHours: number; // kolik hodin musí foukat, aby to mělo smysl
   dayStartHour: number; // od kolika hodin počítáme den (např. 8:00)
@@ -17,6 +22,8 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLat: 50.0755,
   homeLon: 14.4378,
   maxDistanceKm: 250,
+  maxDriveMin: 180,
+  distanceMetric: "straight",
   minWindMs: 6,
   minSessionHours: 3,
   dayStartHour: 8,
