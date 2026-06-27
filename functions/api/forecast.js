@@ -63,11 +63,13 @@ export async function onRequest(context) {
             });
           }
           if (age < CACHE_STALE_MS) {
-            fetch(`${supabaseUrl}/rest/v1/spots?id=eq.${encodeURIComponent(spotId)}`, {
-              method: "PATCH",
-              headers: { ...sbHeaders(serviceKey), Prefer: "return=minimal" },
-              body: JSON.stringify({ last_viewed_at: new Date().toISOString() }),
-            }).catch(() => {});
+            context.waitUntil(
+              fetch(`${supabaseUrl}/rest/v1/spots?id=eq.${encodeURIComponent(spotId)}`, {
+                method: "PATCH",
+                headers: { ...sbHeaders(serviceKey), Prefer: "return=minimal" },
+                body: JSON.stringify({ last_viewed_at: new Date().toISOString() }),
+              }).catch(() => {})
+            );
             return new Response(JSON.stringify(rows[0].data), {
               status: 200,
               headers: { ...cors(env), "X-Cache": "STALE", "Cache-Control": "public, max-age=60" },
@@ -90,19 +92,25 @@ export async function onRequest(context) {
     const [det, ens] = await Promise.all([fetchJson(detUrl), fetchJson(ensUrl)]);
     const forecast = processForecast(spotId, det[0] ?? {}, ens[0] ?? {});
 
-    // ── 3. Ulož do cache + aktualizuj last_viewed_at (fire-and-forget) ──────
+    // ── 3. Ulož do cache + aktualizuj last_viewed_at ────────────────────────
+    // context.waitUntil drží zápisy naživu i po odeslání odpovědi (jinak Workers
+    // nedokončené fetch zruší → cache i last_viewed_at by se nezapsaly).
     if (cacheEnabled) {
       const now = new Date().toISOString();
-      fetch(`${supabaseUrl}/rest/v1/forecast_cache`, {
-        method: "POST",
-        headers: { ...sbHeaders(serviceKey), Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify({ cache_key: spotId, data: forecast, fetched_at: now }),
-      }).catch(() => {});
-      fetch(`${supabaseUrl}/rest/v1/spots?id=eq.${encodeURIComponent(spotId)}`, {
-        method: "PATCH",
-        headers: { ...sbHeaders(serviceKey), Prefer: "return=minimal" },
-        body: JSON.stringify({ last_viewed_at: now }),
-      }).catch(() => {});
+      context.waitUntil(
+        fetch(`${supabaseUrl}/rest/v1/forecast_cache`, {
+          method: "POST",
+          headers: { ...sbHeaders(serviceKey), Prefer: "resolution=merge-duplicates" },
+          body: JSON.stringify({ cache_key: spotId, data: forecast, fetched_at: now }),
+        }).catch(() => {})
+      );
+      context.waitUntil(
+        fetch(`${supabaseUrl}/rest/v1/spots?id=eq.${encodeURIComponent(spotId)}`, {
+          method: "PATCH",
+          headers: { ...sbHeaders(serviceKey), Prefer: "return=minimal" },
+          body: JSON.stringify({ last_viewed_at: now }),
+        }).catch(() => {})
+      );
     }
 
     return new Response(JSON.stringify(forecast), {
