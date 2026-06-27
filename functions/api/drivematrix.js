@@ -127,13 +127,17 @@ export async function onRequest(context) {
     }
   });
 
-  // ── 3. Ulož do cache (fire-and-forget) ──────────────────────────────────────
+  // ── 3. Ulož do cache ────────────────────────────────────────────────────────
+  // context.waitUntil drží zápis naživu i po vrácení odpovědi — bez něj Workers
+  // nedokončené fetch po response zruší (proto cache nezapisovala).
   if (cacheEnabled) {
-    fetch(`${supabaseUrl}/rest/v1/drive_matrix_cache`, {
-      method: "POST",
-      headers: { ...sbHeaders(serviceKey), Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify({ cache_key: cacheKey, data: out, fetched_at: new Date().toISOString() }),
-    }).catch(() => {});
+    context.waitUntil(
+      fetch(`${supabaseUrl}/rest/v1/drive_matrix_cache`, {
+        method: "POST",
+        headers: { ...sbHeaders(serviceKey), Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ cache_key: cacheKey, data: out, fetched_at: new Date().toISOString() }),
+      }).catch(() => {})
+    );
   }
 
   return new Response(JSON.stringify(out), { status: 200, headers: { ...headers, "X-Cache": "MISS" } });
