@@ -1036,32 +1036,42 @@
   .ns-title {
     font-size: 1.05rem;
   }
-  /* Topbar na mobilu: jen logo (název i podtitulek schované),
-     ať se vejdou všechna tlačítka (i admin) bez vodorovného scrollu. */
+  /* Topbar na mobilu: název ZACHOVÁME (jen zmenšíme), podtitulek schováme.
+     Tlačítka zmenšíme a necháme jen ikony — tak se vše vejde i s názvem. */
+  .brand {
+    gap: 8px;
+  }
+  .brand .logo {
+    font-size: 1.6rem;
+  }
   .brand h1 {
-    display: none;
+    font-size: 1.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* krajní pojistka, kdyby přece chybělo místo */
   }
   .brand-sub {
     display: none;
   }
   .btn-text {
-    display: none;
+    display: none; /* tlačítka jen ikony */
   }
   .topbar {
     padding: 12px 2px;
   }
   .topbar-actions {
-    gap: 6px;
+    gap: 5px;
   }
-  /* tap targety ≥ 44 px */
+  /* tap targety ≥ 40 px */
   .icon-btn {
-    width: 44px;
-    height: 44px;
-    font-size: 1.15rem;
+    width: 40px;
+    height: 40px;
+    font-size: 1.1rem;
   }
-  /* auth tlačítko: přihlášený = jen 👤 (text skrytý), nepřihlášený = „Přihlásit" */
+  /* auth: přihlášený = jen 👤 (text skrytý), nepřihlášený = „Přihlásit" */
   .auth-btn {
-    height: 44px;
-    padding: 0 10px;
+    height: 40px;
+    padding: 0 9px;
+    font-size: 0.85rem;
   }
 }
