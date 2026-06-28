@@ -32,6 +32,24 @@ export function defaultSectors(): SectorState[] {
   return Array(8).fill("neutral") as SectorState[];
 }
 
+// Opak sectorsToDirRanges: z uložených good_dirs/bad_dirs zrekonstruuje sektory
+// (pro předvyplnění kompasu při admin editaci). bad přebije good.
+// eslint-disable-next-line react-refresh/only-export-components
+export function dirRangesToSectors(
+  goodDirs?: DirRange[] | null,
+  badDirs?: DirRange[] | null
+): SectorState[] {
+  const inRange = (deg: number, r: DirRange) =>
+    r.from <= r.to ? deg >= r.from && deg <= r.to : deg >= r.from || deg <= r.to;
+  const inAny = (deg: number, rs?: DirRange[] | null) => !!rs && rs.some((r) => inRange(deg, r));
+  return Array.from({ length: 8 }, (_, i) => {
+    const center = i * 45;
+    if (inAny(center, badDirs)) return "bad";
+    if (inAny(center, goodDirs)) return "good";
+    return "neutral";
+  }) as SectorState[];
+}
+
 interface Props {
   value: SectorState[];
   onChange: (v: SectorState[]) => void;

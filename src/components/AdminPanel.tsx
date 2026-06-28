@@ -4,6 +4,7 @@ import { distanceKm } from "../lib/geo";
 import { facilityChips } from "../lib/facilities";
 import { DirCompass } from "./DirCompass";
 import { EditSpotModal, type AdminSpot } from "./EditSpotModal";
+import { ApproveSpotModal } from "./ApproveSpotModal";
 import type { DirRange, SpotFacilities } from "../data/spots";
 
 interface PendingSpot {
@@ -74,6 +75,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
   const [reports, setReports] = useState<Report[]>([]);
   const [allSpots, setAllSpots] = useState<AdminSpot[]>([]);
   const [editingSpot, setEditingSpot] = useState<AdminSpot | null>(null);
+  const [approvingSpot, setApprovingSpot] = useState<PendingSpot | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -286,10 +288,19 @@ export function AdminPanel({ onClose, onApproved }: Props) {
                         </a>
                       </div>
 
-                      {/* Akce pro jeden spot ve skupině */}
+                      {/* Plný editovatelný formulář (stejný jako přidávání) */}
+                      <button
+                        className="btn small"
+                        style={{ marginTop: 8, width: "100%" }}
+                        onClick={() => setApprovingSpot(s)}
+                      >
+                        ✏️ Otevřít formulář – upravit a schválit
+                      </button>
+
+                      {/* Rychlé akce bez úprav pro samostatný spot */}
                       {grp.length === 1 && (
                         <div className="pending-spot-actions">
-                          <button className="btn small approve-btn" onClick={() => approveOne(s)}>✓ Schválit</button>
+                          <button className="btn small approve-btn" onClick={() => approveOne(s)}>✓ Rychle schválit</button>
                           <button className="btn small reject-btn" onClick={() => rejectOne(s.id)}>✕ Zamítnout</button>
                         </div>
                       )}
@@ -364,6 +375,14 @@ export function AdminPanel({ onClose, onApproved }: Props) {
         onClose={() => setEditingSpot(null)}
         onSaved={() => { load(); onApproved(); }}
         onDeleted={() => { load(); onApproved(); }}
+      />
+    )}
+
+    {approvingSpot && (
+      <ApproveSpotModal
+        spot={approvingSpot}
+        onClose={() => setApprovingSpot(null)}
+        onResolved={() => { load(); onApproved(); }}
       />
     )}
     </>
