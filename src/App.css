@@ -2,6 +2,7 @@
   max-width: 760px;
   margin: 0 auto;
   padding: 0 14px 40px;
+  overflow-x: hidden; /* pojistka proti vodorovnému scrollu na mobilu */
 }
 
 /* ---------- TOPBAR ---------- */
@@ -21,6 +22,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0; /* smí se zmenšit, aby se akce vždy vešly */
 }
 .brand .logo {
   font-size: 2rem;
@@ -52,6 +54,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0; /* tlačítka si drží velikost, zmenší se spíš brand */
 }
 .auth-btn {
   background: var(--card);
@@ -1030,16 +1033,35 @@
 }
 
 @media (max-width: 480px) {
-  .brand h1 {
-    font-size: 1.3rem;
-  }
   .ns-title {
     font-size: 1.05rem;
   }
-  .btn-text {
+  /* Topbar na mobilu: jen logo (název i podtitulek schované),
+     ať se vejdou všechna tlačítka (i admin) bez vodorovného scrollu. */
+  .brand h1 {
     display: none;
   }
   .brand-sub {
     display: none;
+  }
+  .btn-text {
+    display: none;
+  }
+  .topbar {
+    padding: 12px 2px;
+  }
+  .topbar-actions {
+    gap: 6px;
+  }
+  /* tap targety ≥ 44 px */
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 1.15rem;
+  }
+  /* auth tlačítko: přihlášený = jen 👤 (text skrytý), nepřihlášený = „Přihlásit" */
+  .auth-btn {
+    height: 44px;
+    padding: 0 10px;
   }
 }
