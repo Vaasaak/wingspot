@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { distanceKm } from "../lib/geo";
+import { facilityChips } from "../lib/facilities";
+import { DirCompass } from "./DirCompass";
 import { EditSpotModal, type AdminSpot } from "./EditSpotModal";
+import type { DirRange, SpotFacilities } from "../data/spots";
 
 interface PendingSpot {
   id: string;
@@ -11,6 +14,10 @@ interface PendingSpot {
   lon: number;
   note: string | null;
   windguru_url: string | null;
+  good_dirs: DirRange[] | null;
+  bad_dirs: DirRange[] | null;
+  facilities: SpotFacilities | null;
+  created_by: string | null;
   created_at: string;
   // editable by admin before approval:
   _windguru: string;
@@ -75,7 +82,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
     const [{ data: sd }, { data: rd }, { data: ad }] = await Promise.all([
       supabase
         .from("spots")
-        .select("id,name,country,lat,lon,note,windguru_url,created_at")
+        .select("id,name,country,lat,lon,note,windguru_url,good_dirs,bad_dirs,facilities,created_by,created_at")
         .eq("status", "pending")
         .order("created_at", { ascending: true }),
       supabase
@@ -227,6 +234,27 @@ export function AdminPanel({ onClose, onApproved }: Props) {
                       <div className="muted small" style={{ marginTop: 2 }}>
                         {s.lat.toFixed(5)}, {s.lon.toFixed(5)}
                         {s.note && ` · ${s.note}`}
+                      </div>
+                      <div className="muted small" style={{ marginTop: 2 }}>
+                        🧑 {s.created_by ? s.created_by.slice(0, 8) + "…" : "neznámý"} · 📅{" "}
+                        {new Date(s.created_at).toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" })}
+                      </div>
+
+                      {/* Směry větru + vybavenost */}
+                      <div className="admin-detail-row">
+                        <DirCompass goodDirs={s.good_dirs} badDirs={s.bad_dirs} />
+                        <div className="admin-facilities">
+                          {facilityChips(s.facilities ?? {}).length === 0 ? (
+                            <span className="muted small">Vybavenost neuvedena</span>
+                          ) : (
+                            facilityChips(s.facilities ?? {}).map((c, i) => (
+                              <span key={i} className={"fac-chip" + (c.ok ? "" : " fac-no")}>{c.label}</span>
+                            ))
+                          )}
+                          {s.facilities?.parkingNote && (
+                            <span className="muted small">🅿 {s.facilities.parkingNote}</span>
+                          )}
+                        </div>
                       </div>
 
                       {/* OSM mapa */}

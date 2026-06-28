@@ -998,6 +998,23 @@
   display: block;
 }
 
+/* Admin – detail spotu ke schválení: směry + vybavenost */
+.admin-detail-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.admin-facilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+  flex: 1;
+  min-width: 140px;
+}
+
 /* Admin – Windguru řádek */
 .admin-windguru-row {
   display: flex;

@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { SquareParking, Droplets, Utensils, Store, X } from "lucide-react";
-import type { Spot, SpotFacilities } from "../data/spots";
+import type { Spot } from "../data/spots";
 import type { DayEval } from "../lib/scoring";
 import type { DistanceMetric } from "../lib/settings";
 import { distanceLabel } from "../lib/geo";
+import { paidParkingLabel } from "../lib/facilities";
 import { fmtMs, fmtWindow } from "../lib/format";
 import { RATING_META, confidenceLabel } from "../lib/ui";
 import { HourlyChart } from "./HourlyChart";
@@ -15,14 +16,6 @@ function FacChip({ icon, label, off }: { icon: ReactNode; label: string; off?: b
       {label}
     </span>
   );
-}
-
-// Popisek placeného parkování i s cenou, pokud ji uživatel zadal.
-function paidParkingLabel(f: SpotFacilities): string {
-  if (f.parkingPrice == null) return "Parking placený";
-  const cur = f.parkingCurrency === "EUR" ? "€" : f.parkingCurrency === "PLN" ? "zł" : "Kč";
-  const unit = f.parkingPriceUnit === "hour" ? "/h" : f.parkingPriceUnit === "day" ? "/den" : "";
-  return `Parking ${f.parkingPrice} ${cur}${unit}`;
 }
 
 export function SpotRow({
