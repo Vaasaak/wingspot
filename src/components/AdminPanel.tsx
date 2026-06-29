@@ -94,7 +94,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
         .order("created_at", { ascending: true }),
       supabase
         .from("spots")
-        .select("id,name,country,lat,lon,note,windguru_url,status,facilities")
+        .select("id,name,country,lat,lon,note,windguru_url,good_dirs,bad_dirs,status,facilities")
         .order("name", { ascending: true }),
     ]);
     setSpots(
