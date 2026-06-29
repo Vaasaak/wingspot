@@ -76,7 +76,11 @@ export function AdminPanel({ onClose, onApproved }: Props) {
   const [allSpots, setAllSpots] = useState<AdminSpot[]>([]);
   const [editingSpot, setEditingSpot] = useState<AdminSpot | null>(null);
   const [approvingSpot, setApprovingSpot] = useState<PendingSpot | null>(null);
+  const [manageQuery, setManageQuery] = useState("");
+  const [manageResults, setManageResults] = useState<AdminSpot[] | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const MANAGE_COLS = "id,name,country,lat,lon,note,windguru_url,good_dirs,bad_dirs,status,facilities";
 
   async function load() {
     if (!supabase) return;
@@ -94,7 +98,7 @@ export function AdminPanel({ onClose, onApproved }: Props) {
         .order("created_at", { ascending: true }),
       supabase
         .from("spots")
-        .select("id,name,country,lat,lon,note,windguru_url,good_dirs,bad_dirs,status,facilities")
+        .select(MANAGE_COLS)
         .order("name", { ascending: true }),
     ]);
     setSpots(
@@ -110,6 +114,23 @@ export function AdminPanel({ onClose, onApproved }: Props) {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, []);
+
+  // Hledání ve „Správa spotů" přes DB (ne omezené 1000-řádkovým limitem
+  // jako úvodní načtení) — najde i spoty za abecedním koncem seznamu.
+  useEffect(() => {
+    const q = manageQuery.trim();
+    const id = setTimeout(async () => {
+      if (!supabase || q.length < 2) { setManageResults(null); return; }
+      const { data } = await supabase
+        .from("spots")
+        .select(MANAGE_COLS)
+        .ilike("name", `%${q}%`)
+        .order("name", { ascending: true })
+        .limit(50);
+      setManageResults((data ?? []) as AdminSpot[]);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [manageQuery]);
 
   function updateWindguru(id: string, val: string) {
     setSpots((prev) => prev.map((s) => (s.id === id ? { ...s, _windguru: val } : s)));
@@ -171,6 +192,8 @@ export function AdminPanel({ onClose, onApproved }: Props) {
   }
 
   const clusters = cluster(spots);
+  const manageSearching = manageQuery.trim().length >= 2;
+  const manageList = manageSearching ? (manageResults ?? []) : allSpots;
 
   return (
     <>
@@ -198,27 +221,41 @@ export function AdminPanel({ onClose, onApproved }: Props) {
           {loading ? (
             <p className="muted">Načítám…</p>
           ) : tab === "manage" ? (
-            allSpots.length === 0 ? (
-              <p className="muted">Žádné spoty</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {allSpots.map((s) => (
-                  <div key={s.id} className="pending-spot" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="pending-spot-name" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {s.name}
-                        <span className="muted small">({s.country})</span>
-                        <span className={"chip small" + (s.status === "approved" ? " active" : "")} style={{ fontSize: "0.72rem", padding: "1px 8px" }}>
-                          {s.status}
-                        </span>
+            <>
+              <input
+                className="text-input"
+                placeholder="Hledej spot podle názvu…"
+                value={manageQuery}
+                onChange={(e) => setManageQuery(e.target.value)}
+                style={{ marginBottom: 10 }}
+              />
+              {manageList.length === 0 ? (
+                <p className="muted">{manageSearching ? "Nic nenalezeno" : "Žádné spoty"}</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {manageList.map((s) => (
+                    <div key={s.id} className="pending-spot" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="pending-spot-name" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {s.name}
+                          <span className="muted small">({s.country})</span>
+                          <span className={"chip small" + (s.status === "approved" ? " active" : "")} style={{ fontSize: "0.72rem", padding: "1px 8px" }}>
+                            {s.status}
+                          </span>
+                        </div>
+                        <div className="muted small">{s.lat.toFixed(4)}, {s.lon.toFixed(4)}</div>
                       </div>
-                      <div className="muted small">{s.lat.toFixed(4)}, {s.lon.toFixed(4)}</div>
+                      <button className="btn small" onClick={() => setEditingSpot(s)}>✏️ Upravit</button>
                     </div>
-                    <button className="btn small" onClick={() => setEditingSpot(s)}>✏️ Upravit</button>
-                  </div>
-                ))}
-              </div>
-            )
+                  ))}
+                </div>
+              )}
+              {!manageSearching && allSpots.length >= 1000 && (
+                <p className="muted small" style={{ marginTop: 10 }}>
+                  Zobrazeno prvních {allSpots.length} spotů (abecedně). Zbytek (např. od „T" dál) najdeš hledáním nahoře.
+                </p>
+              )}
+            </>
           ) : tab === "spots" ? (
             clusters.length === 0 ? (
               <p className="muted">Žádné čekající spoty 🎉</p>
